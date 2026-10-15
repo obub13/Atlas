@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: #0B1016; color: #E9EEF6;
+    font-family: Barlow, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; overscroll-behavior-y: none;
+  }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; -webkit-appearance: textfield; appearance: textfield; }
+  :focus-visible { outline: 2px solid #FF5C38; outline-offset: 2px; border-radius: 6px; }
+}
+html, body { background: #0B1016; }

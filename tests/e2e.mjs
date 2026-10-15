@@ -1,0 +1,284 @@
+// End to end: the production build in a real browser, talking to a local
+// Supabase stand-in (real supabase-js over HTTP, real Postgres + RLS).
+// Covers: connect → sign up → onboard → train → every write lands in the DB →
+// offline logging survives a closed tab → single sessions → weekly split →
+// Progress tab → sign out / wrong password / sign in → a second user sees
+// nothing → layout at 360px and on desktop.
+//   npm run build && node tests/e2e.mjs
+import { chromium } from "playwright";
+import http from "http";
+import { readFileSync, existsSync, statSync } from "fs";
+import path from "path";
+import { startFakeSupabase } from "./fake-supabase.mjs";
+
+const DIST = path.resolve("dist");
+if (!existsSync(path.join(DIST, "index.html"))) { console.error("build first: npm run build"); process.exit(1); }
+
+let failures = 0;
+const ok = (c, m) => { if (!c) { failures++; console.log("  ❌ " + m); } else console.log("  ✓ " + m); };
+const errors = [];
+
+// ── servers ──────────────────────────────────────────────────────────────────
+const fake = await startFakeSupabase();
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".map": "application/json" };
+const web = http.createServer((req, res) => {
+  const p = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  let f = path.join(DIST, p);
+  if (!f.startsWith(DIST) || !existsSync(f) || statSync(f).isDirectory()) f = path.join(DIST, "index.html");
+  res.writeHead(200, { "content-type": types[path.extname(f)] || "application/octet-stream" });
+  res.end(readFileSync(f));
+});
+await new Promise((r) => web.listen(0, "127.0.0.1", r));
+const APP = `http://127.0.0.1:${web.address().port}/`;
+
+const db = {
+  user: async (email) => (await fake.query("select id from auth.users where email = $1", [email])).rows[0]?.id,
+  profile: async (uid) => (await fake.query("select * from public.profiles where user_id = $1", [uid])).rows[0],
+  logs: async (uid) => (await fake.query(`select l.*, s.source, s.format, s.day_key, s.label from public.exercise_logs l join public.workout_sessions s on s.id = l.session_id where l.user_id = $1 order by l.logged_at`, [uid])).rows,
+  sessions: async (uid) => (await fake.query("select * from public.workout_sessions where user_id = $1", [uid])).rows,
+};
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 6000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch {} await wait(80); } return false; };
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+async function newContext(viewport) {
+  const ctx = await browser.newContext({ viewport });
+  await ctx.addInitScript(() => { window.__ATLAS_NO_SW__ = true; });
+  return ctx;
+}
+async function open(ctx) {
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(APP);
+  return page;
+}
+const main = (page) => page.locator("main:visible");
+const cardPrimaries = async (page) => main(page).locator("article").evaluateAll((arts) => arts.map((a) => {
+  const muscles = a.querySelector("p.text-xs")?.textContent || "";
+  return { name: a.querySelector("h4")?.textContent, primary: muscles.split(" · ")[0] };
+}));
+const names = async (page) => (await cardPrimaries(page)).map((c) => c.name).join("|");
+const badgeState = (page) => page.getByTestId("sync-badge").getAttribute("data-state");
+const synced = (page) => until(async () => (await badgeState(page)) === "idle");
+const tickAll = async (page, name) => {
+  const sets = main(page).getByRole("button", { name: new RegExp(`^Set \\d+ of ${esc(name)}$`) });
+  for (let i = 0, n = await sets.count(); i < n; i++) if ((await sets.nth(i).getAttribute("aria-pressed")) !== "true") await sets.nth(i).click();
+  await page.getByRole("button", { name: /Skip/ }).click({ timeout: 500 }).catch(() => {});
+};
+
+const EMAIL = "ofek@example.com", PASS = "kettlebell-31";
+
+/* ── 1. connect + sign up ────────────────────────────────────────────────── */
+console.log("connect + account");
+const ctx = await newContext({ width: 390, height: 844 });
+let page = await open(ctx);
+ok(await page.getByRole("heading", { name: "Connect your database" }).isVisible(), "first launch asks which Supabase project");
+await page.getByPlaceholder("https://abcd1234.supabase.co").fill(fake.url);
+await page.getByPlaceholder("eyJhbGciOi…").fill("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.x");
+await page.getByRole("button", { name: /Connect/ }).click();
+ok(await page.getByRole("alert").filter({ hasText: "service_role" }).isVisible(), "pasting the service_role key is refused");
+await page.getByPlaceholder("eyJhbGciOi…").fill(fake.anonKey);
+await page.getByRole("button", { name: /Connect/ }).click();
+await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+ok(true, "connected → sign-in screen");
+await page.getByRole("button", { name: /Create an account/ }).click();
+await page.getByPlaceholder("Ofek").fill("Ofek");
+await page.getByPlaceholder("you@example.com").fill(EMAIL);
+await page.getByPlaceholder("At least 6 characters").fill(PASS);
+await page.getByRole("button", { name: /Create account/ }).click();
+await page.getByRole("button", { name: /Continue/ }).waitFor();
+const uid = await db.user(EMAIL);
+ok(!!uid && (await db.profile(uid))?.display_name === "Ofek", "account created; profile row exists with the name");
+
+/* ── 2. onboarding → saved to the database ───────────────────────────────── */
+console.log("onboarding");
+await page.getByRole("button", { name: /Continue/ }).click();
+await page.getByRole("button", { name: /Intermediate/ }).click();
+await page.getByRole("button", { name: /Continue/ }).click();
+await page.getByRole("button", { name: /Muscle Building/ }).click();
+await page.getByRole("button", { name: /Continue/ }).click();
+await page.getByRole("button", { name: /^Kettlebell$/ }).click();
+await page.getByRole("button", { name: /^Pull-up bar$/ }).click();
+await page.getByRole("button", { name: /Continue/ }).click();
+await page.getByRole("button", { name: /Start training/ }).click();
+await until(async () => (await db.profile(uid))?.onboarded);
+const prof = await db.profile(uid);
+ok(prof?.onboarded && prof.settings.level === "intermediate" && prof.settings.inventory.includes("kettlebell") && !prof.settings.inventory.includes("dumbbells"),
+  "onboarding answers are in the profiles table (level, gear — kettlebell yes, dumbbells no)");
+
+/* ── 3. a plan workout: every rating is a row ─────────────────────────────── */
+console.log("plan workout");
+await main(page).getByRole("button", { name: /Build my routine/ }).click();
+ok(/day 1 of 3/i.test(await main(page).innerText()), "Build my routine → Day 1 of 3");
+const planMoves = await cardPrimaries(page);
+await tickAll(page, planMoves[0].name);
+await main(page).getByRole("button", { name: /^Right/ }).first().click();
+await until(async () => (await db.logs(uid)).length === 1);
+let rows = await db.logs(uid);
+ok(rows.length === 1 && rows[0].feel === "right" && rows[0].source === "plan" && !!rows[0].day_key, "rating a move writes one exercise_logs row under a plan session with its day");
+await main(page).getByRole("button", { name: /^Easy/ }).first().click();
+await until(async () => (await db.logs(uid))[0]?.feel === "easy");
+rows = await db.logs(uid);
+ok(rows.length === 1 && rows[0].feel === "easy", "changing the rating updates the row — no duplicate");
+ok(await synced(page), "header says Saved");
+
+/* ── 4. offline: log, close the tab, come back online ─────────────────────── */
+console.log("offline");
+await ctx.setOffline(true);
+if (planMoves[1]) {
+  await tickAll(page, planMoves[1].name);
+  await main(page).getByRole("button", { name: /^Right/ }).nth(1).click();
+}
+const finishBtn = main(page).getByRole("button", { name: /Finish & log workout/ });
+if (await finishBtn.count()) await finishBtn.click();
+ok(await until(async () => (await badgeState(page)) === "waiting"), "offline → the header shows changes waiting");
+ok(await page.getByTestId("offline-banner").isVisible(), "…and says they're saved on this device");
+ok((await db.logs(uid)).length === 1, "nothing reached the server while offline");
+await page.close();                       // the tab is closed, still offline
+await ctx.setOffline(false);
+page = await open(ctx);                   // reopened later with signal
+await until(async () => (await db.logs(uid)).length >= 2, 10000);
+rows = await db.logs(uid);
+ok(rows.length >= 2 && new Set(rows.map((r) => r.session_id)).size === 1, `the offline sets uploaded on reopen, into the same session (${rows.length} rows)`);
+ok(await synced(page), "…and the header is back to Saved");
+
+/* ── 5. single session ────────────────────────────────────────────────────── */
+console.log("single session");
+await page.getByRole("button", { name: "Now", exact: true }).click();
+await main(page).getByRole("button", { name: /^Core & Abs/ }).click();
+await main(page).getByRole("button", { name: "20", exact: true }).click();
+await main(page).getByRole("button", { name: /Start 20-min Core & Abs/ }).click();
+const cards = await cardPrimaries(page);
+ok(cards.length >= 2 && cards.every((c) => ["Abs", "Core"].includes(c.primary)), `core session targets abs/core only (${cards.map((c) => c.name).join(", ")})`);
+ok(await main(page).getByTestId("circuit-card").isVisible(), "core defaults to a circuit");
+const before = await names(page);
+let changed = false;
+for (let i = 0; i < 3 && !changed; i++) { await main(page).getByRole("button", { name: "Rebuild with different movements" }).click(); changed = (await names(page)) !== before; }
+ok(changed, "Shuffle hands over different movements");
+for (const m of await cardPrimaries(page)) await tickAll(page, m.name);
+const right = main(page).getByRole("button", { name: /^Right/ });
+for (let i = 0, n = await right.count(); i < n; i++) await right.nth(i).click();
+ok(await main(page).getByText("Session logged").isVisible(), "single session completes");
+await until(async () => (await db.sessions(uid)).some((s) => s.source === "quick"));
+const qs = (await db.sessions(uid)).find((s) => s.source === "quick");
+ok(qs && qs.format === "circuit" && qs.label === "Core & Abs" && qs.day_key === null, "stored as a quick circuit session, not a plan day");
+await until(async () => (await db.profile(uid)).settings.quickPrefs?.focus === "core");
+ok((await db.profile(uid)).settings.quickPrefs?.minutes === 20, "focus + length remembered in the profile");
+await page.getByRole("button", { name: "Week", exact: true }).click();
+ok(await main(page).getByTestId("extra-sessions").isVisible(), "Week tab shows it as extra work, not a plan day");
+
+/* ── 6. weekly split: everything, 20 min, 3 days, L-sit ──────────────────── */
+console.log("weekly split");
+await page.getByRole("button", { name: "Body", exact: true }).click();
+await main(page).getByRole("button", { name: "20 min", exact: true }).click();
+await main(page).getByRole("button", { name: /^L-Sit/ }).click();
+await main(page).getByRole("button", { name: "Everything", exact: true }).click();
+await wait(700);
+const readDays = (loc) => loc.evaluateAll((rs) => rs.map((r) => { const ps = r.querySelectorAll("p"); return { label: ps[0]?.textContent || "", muscles: (ps[1]?.textContent || "").split(" · ") }; }));
+const days3 = await readDays(main(page).getByTestId("week-preview").getByTestId("week-day"));
+const covered = new Set(days3.flatMap((d) => d.muscles));
+ok(days3.length === 3 && covered.size === 14, `14 areas split across 3 days (${days3.map((d) => d.label).join(" / ")})`);
+for (let d = 0; d < 3; d++) {
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  const { label, muscles } = (await readDays(main(page).getByTestId("week-day")))[d];
+  await main(page).getByTestId("week-day").nth(d).click();
+  const prim = (await cardPrimaries(page)).map((c) => c.primary).filter(Boolean);
+  ok(prim.length > 0 && prim.every((m) => muscles.includes(m)), `Day ${d + 1} (${label}) only trains its own muscles`);
+  await main(page).getByRole("button", { name: /^Set 1 of / }).first().click();
+  if (d === 0) await main(page).getByRole("button", { name: "Skill set 1" }).click(); // one L-sit set too
+  await page.getByRole("button", { name: /Skip/ }).click({ timeout: 500 }).catch(() => {});
+  await main(page).getByRole("button", { name: /Finish & log workout/ }).click();
+}
+await until(async () => (await db.logs(uid)).some((r) => r.slot === "skill"));
+ok((await db.logs(uid)).some((r) => r.slot === "skill" && r.ladder === "skill:lsit"), "Finish & log saves the skill practice too");
+await until(async () => (await db.sessions(uid)).filter((s) => s.source === "plan").length >= 4);
+const planSessions = (await db.sessions(uid)).filter((s) => s.source === "plan");
+ok(planSessions.length >= 4 && planSessions.every((s) => s.day_key), `every plan session is stored with its day (${planSessions.length})`);
+await page.getByRole("button", { name: "Week", exact: true }).click();
+ok(await main(page).getByText("3/3 done").isVisible(), "all three days logged → 3/3 done");
+
+/* ── 7. Progress tab ──────────────────────────────────────────────────────── */
+console.log("progress");
+await page.getByRole("button", { name: "Progress", exact: true }).click();
+await synced(page);
+const statsText = await main(page).getByTestId("progress-stats").innerText();
+const totalSessions = (await db.sessions(uid)).length;
+ok(new RegExp(`SESSIONS LOGGED\\s*${totalSessions}\\b`, "i").test(statsText), `stats count every session in the database (${totalSessions})`);
+ok(await main(page).getByTestId("lift-chart").isVisible(), "lift progress chart renders");
+const opts = await main(page).getByLabel("Exercise").locator("option").count();
+ok(opts >= 3, `every logged exercise is selectable (${opts})`);
+await main(page).getByLabel("Exercise").selectOption({ index: 1 });
+ok(await main(page).getByTestId("lift-change").isVisible(), "picking another exercise updates the chart");
+await main(page).getByTestId("lift-card").getByRole("button", { name: "Table" }).click();
+ok(await main(page).getByTestId("lift-card").locator("tbody tr").count() >= 1, "table view lists the data points");
+ok(await main(page).getByTestId("cal-day-trained").count() >= 1, "calendar marks today as a training day");
+ok(await main(page).getByTestId("volume-card").locator("rect").count() > 10, "weekly volume heatmap renders");
+ok(/L-Sit/.test(await main(page).getByTestId("skills-card").innerText()), "skill ladder shows the L-sit");
+await page.screenshot({ path: "tests/shots/progress-mobile.png", fullPage: true }).catch(() => {});
+
+/* ── 8. sign out, wrong password, sign back in ────────────────────────────── */
+console.log("auth");
+await page.getByRole("button", { name: "Open profile" }).click();
+ok(new RegExp(esc(EMAIL)).test(await main(page).innerText()), "profile shows the account email");
+await main(page).getByRole("button", { name: /Sign out/ }).click();
+await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+ok(true, "signed out → sign-in screen");
+await page.getByPlaceholder("you@example.com").fill(EMAIL);
+await page.locator("input[type=password]").fill("wrong-password");
+await page.getByRole("button", { name: /^Sign in/ }).click();
+ok(await page.getByRole("alert").filter({ hasText: "don't match" }).isVisible(), "a wrong password is refused with a clear message");
+await page.locator("input[type=password]").fill(PASS);
+await page.getByRole("button", { name: /^Sign in/ }).click();
+await page.getByRole("button", { name: "Week", exact: true }).waitFor();
+await page.getByRole("button", { name: "Week", exact: true }).click();
+ok(await main(page).getByText("3/3 done").isVisible(), "signed back in: the week is exactly as it was");
+await page.reload();
+await page.getByRole("button", { name: "Week", exact: true }).waitFor();
+await page.getByRole("button", { name: "Week", exact: true }).click();
+ok(await main(page).getByText("3/3 done").isVisible(), "a reload keeps you signed in with everything loaded");
+
+/* ── 9. a second user sees nothing ────────────────────────────────────────── */
+console.log("isolation");
+const ctx2 = await newContext({ width: 390, height: 844 });
+const p2 = await open(ctx2);
+await p2.getByPlaceholder("https://abcd1234.supabase.co").fill(fake.url);
+await p2.getByPlaceholder("eyJhbGciOi…").fill(fake.anonKey);
+await p2.getByRole("button", { name: /Connect/ }).click();
+await p2.getByRole("button", { name: /Create an account/ }).click();
+await p2.getByPlaceholder("Ofek").fill("Someone");
+await p2.getByPlaceholder("you@example.com").fill("someone@example.com");
+await p2.getByPlaceholder("At least 6 characters").fill("password-2");
+await p2.getByRole("button", { name: /Create account/ }).click();
+await p2.getByRole("button", { name: /Continue/ }).waitFor();
+const uid2 = await db.user("someone@example.com");
+ok(!(await p2.getByText(/Ofek/).count()) && (await db.logs(uid2)).length === 0, "a second account starts empty — none of Ofek's data");
+await ctx2.close();
+
+/* ── 10. layout ───────────────────────────────────────────────────────────── */
+console.log("layout");
+await page.setViewportSize({ width: 360, height: 780 });
+for (const tab of ["Week", "Body", "Workout", "Now", "Progress"]) {
+  await page.getByRole("button", { name: tab, exact: true }).click();
+  await wait(150);
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  ok(over <= 0, `${tab} fits 360px (overflow ${over}px)`);
+}
+await page.getByRole("button", { name: "Open profile" }).click();
+ok((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, "Profile fits 360px");
+
+const desk = await open(ctx);
+await desk.setViewportSize({ width: 1360, height: 900 });
+await desk.getByRole("button", { name: "Progress", exact: true }).waitFor();
+await desk.getByRole("button", { name: "Progress", exact: true }).click();
+ok(await main(desk).getByTestId("progress-panel").isVisible(), "desktop: Progress tab");
+await desk.screenshot({ path: "tests/shots/progress-desktop.png" }).catch(() => {});
+await desk.getByRole("button", { name: "Open profile" }).click();
+ok(await desk.getByRole("heading", { name: "Profile" }).isVisible(), "desktop: profile opens as a drawer");
+
+ok(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
+await browser.close();
+await fake.close();
+web.close();
+console.log(failures ? `\n❌ ${failures} FAILURES` : "\n✅ end-to-end contract holds");
+process.exit(failures ? 1 : 0);

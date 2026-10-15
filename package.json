@@ -1,0 +1,29 @@
+{
+  "name": "atlas-trainer",
+  "version": "8.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal trainer app: weekly splits from the muscles you pick, progression, single sessions, progress tracking. React + Supabase.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "bash scripts/check.sh"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "lucide-react": "^1.48.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.1",
+    "playwright": "^1.63.0",
+    "postcss": "^8.5.30",
+    "tailwindcss": "^3.4.19",
+    "vite": "^6.4.4"
+  }
+}

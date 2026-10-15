@@ -490,7 +490,7 @@ function App() {
 
   return (
     <div className="min-h-dvh bg-ink text-text">
-      <header className="sticky top-0 z-30 bg-ink/90 backdrop-blur border-b border-line">
+      <header className="sticky top-0 z-30 bg-ink/90 backdrop-blur border-b border-line pt-safe px-safe" data-testid="app-header">
         <div className="max-w-6xl mx-auto flex items-center gap-3 px-4 md:px-6 h-14">
           <span className="flex items-center gap-2 text-ember">
             <HeartPulse size={20} aria-hidden />
@@ -518,7 +518,7 @@ function App() {
 
       <main className="hidden md:block max-w-6xl mx-auto px-6 py-6">
         <div className="grid grid-cols-[400px,1fr] gap-8 items-start">
-          <div className="sticky top-[72px] max-h-[calc(100dvh-90px)] overflow-y-auto pr-1">{selectPanel}</div>
+          <div className="sticky top-[calc(72px+var(--sat))] max-h-[calc(100dvh-90px-var(--sat))] overflow-y-auto pr-1">{selectPanel}</div>
           <div className="min-w-0 min-h-[70vh]">
             <div className="flex gap-2 mb-5">
               {[{ id: "workout", label: "Today's session" }, { id: "quick", label: "Single session" }, { id: "plan", label: "Your week" }, { id: "progress", label: "Progress" }].map((t) => (
@@ -534,7 +534,7 @@ function App() {
         </div>
       </main>
 
-      <main className="md:hidden px-4 py-4 pb-28">
+      <main className="md:hidden px-4 py-4 pb-[calc(7rem+var(--sab))]">
         {tab === "plan" && planPanel}
         {tab === "body" && selectPanel}
         {tab === "workout" && workoutPanel}
@@ -543,7 +543,7 @@ function App() {
         {tab === "profile" && profilePanel}
       </main>
 
-      <nav className="md:hidden fixed inset-x-0 bottom-0 z-30 bg-surface/95 backdrop-blur border-t border-line" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav className="md:hidden fixed inset-x-0 bottom-0 z-30 bg-surface/95 backdrop-blur border-t border-line pb-safe px-safe" data-testid="bottom-nav">
         <div className="grid grid-cols-5">
           {nav.map(({ id, label, icon: Icon, dot }) => (
             <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined}
@@ -559,7 +559,7 @@ function App() {
       {drawer && (
         <div className="hidden md:block fixed inset-0 z-40">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDrawer(false)} />
-          <aside className="absolute right-0 top-0 h-full w-[440px] bg-ink border-l border-line p-6 overflow-y-auto">
+          <aside className="absolute right-0 top-0 h-full w-[440px] bg-ink border-l border-line p-6 pt-[calc(1.5rem+var(--sat))] pb-[calc(1.5rem+var(--sab))] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-display text-2xl font-bold uppercase text-text">Profile</h2>
               <button onClick={() => setDrawer(false)} aria-label="Close profile"

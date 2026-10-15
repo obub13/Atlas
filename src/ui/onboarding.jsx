@@ -51,7 +51,7 @@ export function Onboarding({ initial, onDone }) {
   const split = SPLITS[p.daysPerWeek];
 
   return (
-    <div className="min-h-dvh bg-ink flex flex-col">
+    <div className="min-h-screen-safe bg-ink flex flex-col px-safe">
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col px-5 pt-8 pb-6">
         <div className="flex items-center gap-2 text-ember mb-1">
           <HeartPulse size={20} />

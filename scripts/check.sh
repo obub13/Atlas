@@ -21,6 +21,7 @@ run "schema + RLS"         "node tests/schematest.mjs"
 run "data layer"           "node tests/repotest.mjs"
 run "end to end"           "node tests/e2e.mjs" 3
 run "security headers"     "node tests/csptest.mjs" 3
+run "phone safe areas"     "node tests/safearea.mjs" 3
 a=$(node tests/audit2.mjs)
 for pat in "junk volume): 0 " "over 75 min: 0 " "isolation work: 0 " "CANNOT be loaded: 0"; do
   echo "$a" | grep -q "$pat" || { echo "❌ audit limit breached: $pat"; fail=1; }

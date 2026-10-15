@@ -444,7 +444,7 @@ export function RestTimer({ rest, onSkip, onAddTime }) {
   if (!rest) return null;
   const pct = (rest.remaining / rest.total) * 100;
   return (
-    <div className="fixed inset-x-0 bottom-[68px] md:bottom-6 z-40 px-4 pointer-events-none">
+    <div className="fixed inset-x-0 bottom-above-nav md:bottom-6 z-40 px-4 pointer-events-none" data-testid="rest-timer">
       <div className="pointer-events-auto mx-auto max-w-md rounded-2xl bg-raised/95 backdrop-blur border border-sky/40 shadow-lg shadow-black/40 overflow-hidden">
         <div className="flex items-center gap-3 px-4 py-3">
           <Timer size={18} className="text-sky shrink-0" aria-hidden />

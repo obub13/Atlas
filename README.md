@@ -84,6 +84,7 @@ npm test     # builds, then runs every suite; set CHROMIUM_PATH if Playwright ne
 | `schematest` | The real migration on real Postgres (PGlite): owner-only RLS, cross-user writes refused, idempotent upserts, cascades |
 | `repotest` | The data layer over HTTP with supabase-js: round-trips, offline outbox surviving a "closed tab", a rejected row not blocking the queue, more than 1,000 rows |
 | `e2e` | The production build in Chromium: connect → sign up → onboard → train → offline → single session → weekly split → Progress → sign out / in → second user isolated → layout |
+| `safearea` | On a simulated iPhone (status bar + home indicator insets), nothing tappable sits under the clock/battery or the home bar |
 | `csptest` | The production Content-Security-Policy doesn't block anything the app needs |
 
 The database-backed suites run against `tests/fake-supabase.mjs`: real Postgres with the real migration, behind a small GoTrue/PostgREST-compatible HTTP server. They exercise the same client library, the same requests and the same RLS as supabase.co.

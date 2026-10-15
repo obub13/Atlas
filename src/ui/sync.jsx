@@ -28,7 +28,7 @@ export function SyncBanner({ sync, deadOps, onRetry, onDismiss }) {
   if (sync.state === "error") {
     const dead = deadOps();
     return (
-      <div role="alert" className="sticky top-14 z-20 bg-crit/10 border-b border-crit/40 px-4 py-2.5 text-[13px] text-crit">
+      <div role="alert" className="sticky top-below-header z-20 bg-crit/10 border-b border-crit/40 px-4 py-2.5 text-[13px] text-crit">
         <div className="max-w-6xl mx-auto flex items-start gap-2">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span className="flex-1 min-w-0">
@@ -42,7 +42,7 @@ export function SyncBanner({ sync, deadOps, onRetry, onDismiss }) {
   }
   if (sync.state === "waiting" && sync.pending > 0) {
     return (
-      <div role="status" data-testid="offline-banner" className="sticky top-14 z-20 bg-amberGold/10 border-b border-amberGold/40 px-4 py-2 text-[13px] text-amberGold">
+      <div role="status" data-testid="offline-banner" className="sticky top-below-header z-20 bg-amberGold/10 border-b border-amberGold/40 px-4 py-2 text-[13px] text-amberGold">
         <div className="max-w-6xl mx-auto flex items-center gap-2">
           <CloudOff size={15} className="shrink-0" />
           <span className="flex-1 min-w-0">

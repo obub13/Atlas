@@ -15,3 +15,23 @@
   :focus-visible { outline: 2px solid #FF5C38; outline-offset: 2px; border-radius: 6px; }
 }
 html, body { background: #0B1016; }
+
+/* ── Safe areas ─────────────────────────────────────────────────────────────
+   Installed to the Home Screen the app draws edge to edge (viewport-fit=cover
+   + a translucent status bar), so anything pinned to an edge must clear the
+   clock / notch / Dynamic Island and the home indicator. One set of variables,
+   so tests can simulate a notch by overriding them. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+@layer utilities {
+  .pt-safe { padding-top: var(--sat); }
+  .pb-safe { padding-bottom: var(--sab); }
+  .px-safe { padding-left: var(--sal); padding-right: var(--sar); }
+  .top-below-header { top: calc(3.5rem + var(--sat)); }
+  .bottom-above-nav { bottom: calc(68px + var(--sab)); }
+  .min-h-screen-safe { min-height: 100dvh; padding-top: var(--sat); padding-bottom: var(--sab); }
+}

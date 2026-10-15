@@ -5,7 +5,7 @@ import { validateConfig } from "../data/client.js";
 
 export function BootScreen({ label }) {
   return (
-    <div className="min-h-dvh bg-ink grid place-items-center">
+    <div className="min-h-screen-safe bg-ink grid place-items-center">
       <div className="text-center">
         <div className="flex items-center gap-2 text-ember animate-pulse justify-center">
           <HeartPulse size={22} />
@@ -18,7 +18,7 @@ export function BootScreen({ label }) {
 }
 
 const Shell = ({ children }) => (
-  <div className="min-h-dvh bg-ink flex flex-col">
+  <div className="min-h-screen-safe bg-ink flex flex-col px-safe">
     <div className="w-full max-w-md mx-auto flex-1 flex flex-col px-5 pt-10 pb-8">
       <div className="flex items-center gap-2 text-ember mb-8">
         <HeartPulse size={20} />

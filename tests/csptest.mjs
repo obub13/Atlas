@@ -27,7 +27,7 @@ const violations = [];
 p.on("console", (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text()); });
 await p.goto(`http://127.0.0.1:${web.address().port}/`);
 await p.getByPlaceholder("https://abcd1234.supabase.co").fill(fake.url);
-await p.getByPlaceholder("eyJhbGciOi…").fill(fake.anonKey);
+await p.getByPlaceholder("sb_publishable_… or eyJhbGciOi…").fill(fake.anonKey);
 await p.getByRole("button", { name: /Connect/ }).click();
 await p.getByRole("button", { name: /Create an account/ }).click();
 await p.getByPlaceholder("Ofek").fill("Ofek");

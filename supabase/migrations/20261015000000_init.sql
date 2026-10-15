@@ -66,7 +66,7 @@ create index exercise_logs_user_exercise on public.exercise_logs (user_id, exerc
 
 -- ── updated_at ───────────────────────────────────────────────────────────────
 create or replace function public.touch_updated_at() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   new.updated_at := now();
   return new;
@@ -78,7 +78,7 @@ create trigger workout_sessions_touch before update on public.workout_sessions
 
 -- ── a profile row appears the moment someone signs up ────────────────────────
 create or replace function public.handle_new_user() returns trigger
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 begin
   insert into public.profiles (user_id, display_name)
   values (new.id, left(coalesce(new.raw_user_meta_data ->> 'display_name', ''), 40))
@@ -87,6 +87,8 @@ begin
 end $$;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+-- runs only as a trigger; nobody calls it through the API
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 -- ── row-level security: your rows, nobody else's ─────────────────────────────
 alter table public.profiles         enable row level security;

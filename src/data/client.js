@@ -26,8 +26,8 @@ export function validateConfig({ url, anonKey }) {
     return { error: "That doesn't look like a Supabase project URL (https://xxxx.supabase.co)." };
   }
   if (k.length < 20) return { error: "That anon key looks too short — copy the whole key." };
-  if (/service_role/.test(atobSafe(k.split(".")[1] || ""))) {
-    return { error: "That's the service_role key — it bypasses all security. Use the anon (public) key." };
+  if (/^sb_secret_/.test(k) || /service_role/.test(atobSafe(k.split(".")[1] || ""))) {
+    return { error: "That's a secret key (service_role / sb_secret_) — it bypasses all security. Use the publishable or anon key." };
   }
   return { url: u, anonKey: k };
 }

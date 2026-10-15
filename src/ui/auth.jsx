@@ -156,13 +156,13 @@ export function SetupScreen({ onSave, initial }) {
     <Shell>
       <h1 className="font-display text-4xl font-bold uppercase text-text leading-none">Connect your database</h1>
       <p className="text-mute text-sm mt-2">
-        One time only. In Supabase open <span className="text-text font-semibold">Project Settings → API</span> and copy the Project URL and the <span className="text-text font-semibold">anon public</span> key.
+        One time only. In Supabase open <span className="text-text font-semibold">Project Settings → API</span> and copy the Project URL and the <span className="text-text font-semibold">publishable</span> (or anon public) key.
       </p>
       <Field label="Project URL" icon={Database} value={url} onChange={setUrl} placeholder="https://abcd1234.supabase.co" autoComplete="off" onEnter={save} />
-      <Field label="Anon public key" icon={Lock} value={key} onChange={setKey} placeholder="eyJhbGciOi…" autoComplete="off" onEnter={save} />
+      <Field label="Publishable key" icon={Lock} value={key} onChange={setKey} placeholder="sb_publishable_… or eyJhbGciOi…" autoComplete="off" onEnter={save} />
       <p className="text-xs text-faint mt-3 flex gap-2">
         <Check size={14} className="shrink-0 text-mint mt-0.5" />
-        The anon key is meant to be public. Your data is protected by row-level security in the database — never paste the service_role key here.
+        The anon key is meant to be public. Your data is protected by row-level security in the database — never paste a secret / service_role key here.
       </p>
       {error && <p role="alert" className="mt-4 text-[13px] text-crit flex gap-2"><AlertTriangle size={15} className="shrink-0 mt-0.5" />{error}</p>}
       <Primary onClick={save} disabled={!url || !key} busy={busy}>Connect</Primary>

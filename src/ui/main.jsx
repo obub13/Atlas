@@ -142,7 +142,7 @@ function App() {
     await openAccount(data.user);
   };
   const signUp = async (email, password, displayName) => {
-    const { data, error } = await client.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
+    const { data, error } = await client.auth.signUp({ email, password, options: { data: { display_name: displayName }, emailRedirectTo: window.location.origin } });
     if (error) throw error;
     if (!data.session) return { confirm: true }; // project requires email confirmation
     await openAccount(data.user);

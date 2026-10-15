@@ -6,3 +6,5 @@ dist/
 tests/shots/*.png
 !tests/shots/demo-progress-*.png
 .DS_Store
+netlify-upload/
+.netlify

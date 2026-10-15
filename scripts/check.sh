@@ -9,7 +9,7 @@ run() {
   echo "$out" | grep -E "✅|❌|checked|worst|every pick|rebuild changed|differs" | tail -${3:-8}
   [ $code -ne 0 ] && { fail=1; echo "$out" | grep "❌" | head -20; }
 }
-npx vite build --logLevel error || exit 1
+npx vite build --mode test --logLevel error || exit 1   # test mode: no project baked in, tests point it at the local stand-in
 run "gear contract"        "node tests/verify.mjs"
 run "programming quality"  "node tests/audit2.mjs"
 run "rebuild/swap/hide"    "node tests/rebuildtest.mjs"

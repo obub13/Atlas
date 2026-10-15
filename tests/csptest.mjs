@@ -1,4 +1,4 @@
-// The production Content-Security-Policy from netlify.toml, applied to the real
+// The production Content-Security-Policy from public/_headers, applied to the real
 // build: nothing the app needs may be blocked (scripts, styles, fonts, icons,
 // the service worker, and the database connection).
 import { chromium } from "playwright";
@@ -7,8 +7,8 @@ import { readFileSync, existsSync, statSync } from "fs";
 import path from "path";
 import { startFakeSupabase } from "./fake-supabase.mjs";
 
-const toml = readFileSync("netlify.toml", "utf8");
-const csp = /Content-Security-Policy = "([^"]+)"/.exec(toml)[1];
+const headers = readFileSync("public/_headers", "utf8");
+const csp = /Content-Security-Policy: (.+)/.exec(headers)[1].trim();
 const fake = await startFakeSupabase();
 // production allows https://*.supabase.co; the local stand-in's origin is added for the test only
 const testCsp = csp.replace("connect-src 'self'", `connect-src 'self' ${fake.url}`);

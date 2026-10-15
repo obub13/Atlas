@@ -51,7 +51,7 @@ tests/        engine suites, schema/RLS on real Postgres, data layer, end-to-end
 
 There are two ways to deploy:
 
-- **From GitHub (recommended).** Push this repo to GitHub. In Netlify choose **Add new site → Import an existing project**, then pick the repo; the build settings come from `netlify.toml`. Under **Site configuration → Environment variables**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then deploy. Every push redeploys.
+- **From GitHub (recommended).** Push this repo to GitHub. In Netlify choose **Add new site → Import an existing project**, then pick the repo; the build settings come from `netlify.toml`; headers and redirects ship in `public/_headers` and `public/_redirects`. Under **Site configuration → Environment variables**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then deploy. Every push redeploys.
 - **Drag and drop.** Run `npm run build` and drag the `dist` folder onto [app.netlify.com/drop](https://app.netlify.com/drop). The first time you open the site it asks for the Project URL and anon key and remembers them on that device.
 
 ### 3. On your phone

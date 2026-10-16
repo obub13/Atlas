@@ -8,7 +8,15 @@ import { weekStart } from "./week.js";
 const DAY = 864e5;
 const WEEK = 7 * DAY;
 const sessionKey = (e) => e.sessionId || `${new Date(e.at).toDateString()}|${e.source || "plan"}`;
-const nameOf = (id) => EXERCISES.find((e) => e.id === id)?.name || id;
+/** Library name, then a saved custom move's name, then a readable version of the id. */
+export function nameOf(id, customs = []) {
+  const lib = EXERCISES.find((e) => e.id === id);
+  if (lib) return lib.name;
+  const c = customs.find((x) => x.id === id);
+  if (c) return c.name;
+  return String(id).replace(/^custom:/, "").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
+const offPlan = (s) => s === "quick" || s === "manual";
 
 /** Round, readable axis ticks covering [lo, hi]. */
 export function niceTicks(lo, hi, count = 3) {
@@ -45,8 +53,8 @@ export function summary(log, now = Date.now()) {
   return {
     sessions: all.length,
     thisWeek: thisWeek.length,
-    thisWeekPlan: thisWeek.filter((s) => s.source !== "quick").length,
-    thisWeekQuick: thisWeek.filter((s) => s.source === "quick").length,
+    thisWeekPlan: thisWeek.filter((s) => !offPlan(s.source)).length,
+    thisWeekQuick: thisWeek.filter((s) => offPlan(s.source)).length,
     streakWeeks: streak,
     sets30,
   };
@@ -61,7 +69,7 @@ function metricFor(points) {
 const valueOf = (p, metric) => (metric === "load" ? p.load : metric === "hold" ? p.holdSecs : p.reps ? p.reps[1] : null);
 
 /** Every movement that's been logged, most-trained first, with how it's moved. */
-export function exercisesLogged(log) {
+export function exercisesLogged(log, customs = []) {
   const by = new Map();
   for (const e of log) {
     if (String(e.exerciseId).startsWith("skill:")) continue;
@@ -69,13 +77,13 @@ export function exercisesLogged(log) {
     by.get(e.exerciseId).push(e);
   }
   return [...by.entries()].map(([id, list]) => {
-    const s = liftSeries(log, id);
-    return { id, name: nameOf(id), sessions: s.points.length, lastAt: list[list.length - 1].at, metric: s.metric, change: s.change };
+    const s = liftSeries(log, id, customs);
+    return { id, name: nameOf(id, customs), sessions: s.points.length, lastAt: list[list.length - 1].at, metric: s.metric, change: s.change };
   }).sort((a, b) => b.sessions - a.sessions || b.lastAt - a.lastAt);
 }
 
 /** One movement over time: one point per session it was done in. */
-export function liftSeries(log, exerciseId) {
+export function liftSeries(log, exerciseId, customs = []) {
   const bySession = new Map();
   for (const e of log) {
     if (e.exerciseId !== exerciseId) continue;
@@ -93,7 +101,7 @@ export function liftSeries(log, exerciseId) {
       // double progression climbs reps before load — show it so a flat weight line isn't read as "no progress"
       fromReps: points[0].reps, toReps: points[points.length - 1].reps };
   }
-  return { id: exerciseId, name: nameOf(exerciseId), metric, unit, points, change };
+  return { id: exerciseId, name: nameOf(exerciseId, customs), metric, unit, points, change };
 }
 
 /** Day grid for the last `weeks` weeks, Monday-first columns. */
@@ -112,7 +120,7 @@ export function calendar(log, weeks = 12, now = Date.now()) {
     const d = days[i];
     d.sets += e.sets || 0;
     const k = sessionKey(e);
-    if (!seen.has(k)) { seen.add(k); if (e.source === "quick") d.quick++; else d.plan++; }
+    if (!seen.has(k)) { seen.add(k); if (offPlan(e.source)) d.quick++; else d.plan++; }
     if (e.label) d.labels.add(e.label);
   }
   return { start, weeks, days: days.map((d) => ({ ...d, labels: [...d.labels] })) };

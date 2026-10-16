@@ -9,6 +9,7 @@ A personal-trainer web app. Pick the muscles you want to train, and it splits th
 - **Weekly split.** The muscles you pick are spread across your training days (Push / Pull / Legs, Upper / Lower, quad and hinge days…). Every possible arrangement is scored, then the top candidates are built for real to check which muscles actually get trained. The week tells you honestly when your time doesn't fit everything.
 - **Progression.** Double progression (reps, then load), a deload after two hard sessions, and bodyweight ladders. Skills such as the L-sit move up a stage after two clean sessions in a row.
 - **Single sessions.** A one-off workout (core, arms, full body…) as a circuit or straight sets. It counts toward your history and progression but never toward the weekly plan.
+- **Log a workout done without the app.** Type it the way you'd text it ("3x10 all: russian twist, tridents, halos") and it fills in the rows. Library moves keep their id, so they feed that lift's progression; a move Atlas doesn't know gets its muscles picked once and is remembered. It counts toward history, volume and progress, never toward plan days, and any session can be deleted.
 - **Progress.** Charts per lift, a training calendar, a weekly-volume heatmap per muscle, and skill-ladder dates.
 - **Saving.** Every set is written to Postgres. If the connection drops, writes queue on the device and upload later without ever creating duplicates.
 
@@ -21,11 +22,12 @@ src/engine/   pure training logic: no I/O, all unit-tested
   quick.js       single sessions
   history.js     the training log → volume, sessions, history
   progress.js    everything the Progress tab shows
+  logparse.js    free text → logged exercises (library / saved custom / known moves)
 src/data/     the only code that talks to Supabase
   client.js      project URL + anon key (build env or a one-time setup screen)
   mapping.js     database rows ↔ app model (pure)
   outbox.js      persisted write queue: coalescing, batching, retry and backoff, dead-letter
-  repo.js        load (with offline cache), saveProfile, syncLog (only what changed), resetAll
+  repo.js        load (with offline cache), saveProfile, syncLog (only what changed), deleteSession, resetAll
 src/ui/       React screens
 supabase/migrations/   schema + row-level security
 tests/        engine suites, schema/RLS on real Postgres, data layer, end-to-end
@@ -42,7 +44,7 @@ tests/        engine suites, schema/RLS on real Postgres, data layer, end-to-end
 ### 1. Supabase
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. Open the **SQL Editor**, paste [`supabase/migrations/20261015000000_init.sql`](supabase/migrations/20261015000000_init.sql) and press **Run**.
+2. Open the **SQL Editor** and run every file in [`supabase/migrations/`](supabase/migrations/) in name order (or `supabase db push` with the CLI).
 3. Under **Authentication → Sign In / Providers → Email**, either keep **Confirm email** on (you'll get a link when you sign up) or turn it off, since you're the only user.
 4. Under **Authentication → URL Configuration**, set **Site URL** to your Netlify address once you have it (step 2). Confirmation links go there.
 5. Under **Project Settings → API**, copy the **Project URL** and the **anon public** key.
@@ -79,11 +81,12 @@ npm test     # builds, then runs every suite; set CHROMIUM_PATH if Playwright ne
 | `rebuildtest` | Rebuild / swap / hide give real alternatives |
 | `quicktest` | 11,520 single sessions: right area, gear, length, circuit rules, variety |
 | `historytest` | Single sessions feed progression but never change the weekly routine |
+| `logparsetest` | Free-text logging ("3x10 all: …"), library/custom/known matching, back-dating, and that logged workouts count in volume and progression but never tick a plan day |
 | `weektest` | 720 weekly plans: every pick placed, full coverage when there's time, frequency, recovery spacing |
 | `progresstest` | Progress maths and skill pacing, against hand-built logs with known answers |
 | `schematest` | The real migration on real Postgres (PGlite): owner-only RLS, cross-user writes refused, idempotent upserts, cascades |
 | `repotest` | The data layer over HTTP with supabase-js: round-trips, offline outbox surviving a "closed tab", a rejected row not blocking the queue, more than 1,000 rows |
-| `e2e` | The production build in Chromium: connect → sign up → onboard → train → offline → single session → weekly split → Progress → sign out / in → second user isolated → layout |
+| `e2e` | The production build in Chromium: connect → sign up → onboard → train → offline → single session → weekly split → Progress → log a workout by hand (new move, muscles picked) → delete it → sign out / in → second user isolated → layout |
 | `safearea` | On a simulated iPhone (status bar + home indicator insets), nothing tappable sits under the clock/battery or the home bar |
 | `csptest` | The production Content-Security-Policy doesn't block anything the app needs |
 

@@ -149,6 +149,65 @@ ok(c.l === w.exercises.length + 1, "B can't add rows to A's session (row-level s
 ok(st2.dead >= 1 && cb.s === 1 && cb.l === 1, "the rejected write is parked; B's own session behind it still saves");
 repoB.stop(); repoB2.stop();
 
+// ── a workout logged by hand, then deleted ───────────────────────────────────
+{
+  let st = null;
+  const rd = createRepo(A, uidA, { store: memStore(), onStatus: (s) => { st = s; } });
+  let L = (await rd.load()).log;
+  const before = await counts(uidA);
+  const mid = uuid();
+  const manual = (slot, id) => ({ exerciseId: id, sets: 3, reps: [10, 10], holdSecs: null, load: null, feel: null, muscles: ["core", "abs"],
+    source: "manual", format: "sets", sessionId: mid, slot, label: "Kettlebell core", dayKey: null, at: Date.now() - 86400000 + slot * 1000 });
+  L = upsertEntry(upsertEntry(L, manual(0, "russiantwist")), manual(1, "custom:tridents"));
+  rd.syncLog(L);
+  await until(() => st?.pending === 0);
+  const row = (await fake.query("select source, label, day_key from public.workout_sessions where id = $1", [mid])).rows[0];
+  ok(row?.source === "manual" && row.label === "Kettlebell core" && row.day_key === null, "a hand-logged workout is saved as a manual session");
+  ok((await counts(uidA)).l === before.l + 2, "…with one row per exercise (custom ids included)");
+
+  const rB = createRepo(B, uidB, { store: memStore() });
+  await rB.load(); rB.deleteSession(mid);
+  await until(() => rB.status().pending === 0);
+  ok((await counts(uidA)).l === before.l + 2, "another user can't delete it (row-level security)");
+  rB.stop();
+
+  rd.deleteSession(mid); L = L.filter((e) => e.sessionId !== mid); rd.syncLog(L);
+  await until(() => st?.pending === 0);
+  c = await counts(uidA);
+  ok(c.s === before.s && c.l === before.l, "deleting it removes the session and its logs (cascade)");
+  const sent = fake.stats.writes;
+  rd.syncLog(L); await wait(120);
+  ok(fake.stats.writes === sent, "…and the next sync doesn't resurrect it");
+
+  // logged and deleted while offline: none of it ever reaches the server
+  fake.stats.down = true;
+  const oid = uuid();
+  L = upsertEntry(L, { ...manual(0, "plank"), sessionId: oid });
+  rd.syncLog(L);
+  rd.deleteSession(oid); L = L.filter((e) => e.sessionId !== oid); rd.syncLog(L);
+  ok(rd.status().pending === 1, "offline: deleting an unsent workout drops its queued writes (only the delete is left)");
+  fake.stats.down = false; rd.kick();
+  await until(() => st?.pending === 0);
+  ok((await fake.query("select count(*)::int n from public.workout_sessions where id = $1", [oid])).rows[0].n === 0, "…and it never appears in the database");
+  rd.stop();
+
+  // a saved session deleted offline stays deleted on the next open, then syncs
+  const store = memStore();
+  const ro = createRepo(A, uidA, { store });
+  L = (await ro.load()).log;
+  const keep = L[L.length - 1].sessionId;
+  fake.stats.down = true;
+  ro.deleteSession(keep);
+  ro.stop();
+  const ro2 = createRepo(A, uidA, { store });
+  const m2 = await ro2.load();
+  ok(m2.offline && !m2.log.some((e) => e.sessionId === keep), "deleted offline → still gone after closing and reopening");
+  fake.stats.down = false; ro2.kick();
+  await until(() => ro2.status().pending === 0);
+  ok((await fake.query("select count(*)::int n from public.workout_sessions where id = $1", [keep])).rows[0].n === 0, "…and the delete reaches the database once back online");
+  ro2.stop();
+}
+
 // ── pagination past PostgREST's 1,000-row page ───────────────────────────────
 await fake.query(`insert into public.workout_sessions (id, user_id, source, started_at) select gen_random_uuid(), $1, 'plan', now() - (g || ' hours')::interval from generate_series(1, 300) g`, [uidA]);
 await fake.query(`insert into public.exercise_logs (session_id, slot, user_id, exercise_id, sets, feel, muscles, logged_at)

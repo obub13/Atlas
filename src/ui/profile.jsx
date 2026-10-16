@@ -31,7 +31,7 @@ function exportData(account, profile, log) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export function ProfilePanel({ profile, onChange, onReset, sessions, history = [], account, onSignOut, onRename, log = [], sync }) {
+export function ProfilePanel({ profile, onChange, onReset, sessions, history = [], account, onSignOut, onRename, log = [], sync, onDeleteSession }) {
   const kit = kitCoverage(profile.inventory, profile.customGear);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(account.name);
@@ -144,7 +144,7 @@ export function ProfilePanel({ profile, onChange, onReset, sessions, history = [
             : `${sessions} session${sessions === 1 ? "" : "s"} logged — plan and single sessions. Your progression targets are derived from them.`}
         </p>
         {history.length > 0 && (
-          <ol className="grid gap-2 mt-3">{history.slice(0, 12).map((s) => <SessionRow key={s.id} s={s} />)}</ol>
+          <ol className="grid gap-2 mt-3">{history.slice(0, 12).map((s) => <SessionRow key={s.id} s={s} onDelete={onDeleteSession} />)}</ol>
         )}
       </div>
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "../index.css";
-import { HeartPulse, CalendarDays, PersonStanding, Dumbbell, Zap, User, Timer, X, LineChart } from "lucide-react";
+import { HeartPulse, CalendarDays, PersonStanding, Dumbbell, Zap, User, Timer, X, LineChart, PenLine, ChevronRight } from "lucide-react";
 import { MUSCLES, GOALS, EQUIP_PRESETS } from "../engine/data.js";
 import {
   inventoryOf, buildWorkout, alternativesFor, replaceExercise, weeklyReadout,
 } from "../engine/generator.js";
-import { upsertEntry, weeklyVolume, sessionsInWindow, daysSince, totalSessions, currentBlock, planLog, isQuick, sessionHistory } from "../engine/history.js";
+import { upsertEntry, weeklyVolume, sessionsInWindow, daysSince, totalSessions, currentBlock, planLog, isOffPlan, sessionHistory } from "../engine/history.js";
 import { getConfig, saveConfig, clearConfig, getClient } from "../data/client.js";
 import { createRepo } from "../data/repo.js";
 import { uuid } from "../data/mapping.js";
@@ -21,12 +21,14 @@ import { SyncBadge, SyncBanner } from "./sync.jsx";
 import { ProgressPanel } from "./progress.jsx";
 import { ProfilePanel } from "./profile.jsx";
 import { QuickPanel } from "./quickui.jsx";
+import { LogWorkoutPanel, localDate } from "./logui.jsx";
+import { entriesFromRows } from "../engine/logparse.js";
 import { planWeek, weekProgress } from "../engine/week.js";
 
 const DEFAULT_PROFILE = {
   age: 28, height: 175, weight: 75, level: null, goal: null, equipment: "bw",
   inventory: [...EQUIP_PRESETS.bw], customGear: [], skill: null, excluded: [],
-  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null,
+  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null, customExercises: [],
 };
 
 function normalize(p) {
@@ -34,6 +36,7 @@ function normalize(p) {
   if (!Array.isArray(out.inventory) || !out.inventory.length) out.inventory = [...(EQUIP_PRESETS[out.equipment] || EQUIP_PRESETS.min)];
   if (!Array.isArray(out.customGear)) out.customGear = [];
   if (!Array.isArray(out.excluded)) out.excluded = [];
+  if (!Array.isArray(out.customExercises)) out.customExercises = [];
   return out;
 }
 
@@ -79,6 +82,7 @@ function App() {
 
   const [rest, setRest] = useState(null);
   const [tab, setTab] = useState("body");
+  const [logReturn, setLogReturn] = useState("plan"); // where "Back" goes from the log screen
   const [drawer, setDrawer] = useState(false);
   const ready = useRef(false);
 
@@ -194,7 +198,7 @@ function App() {
   const blockInfo = useMemo(() => currentBlock(profile.blockStarted), [profile.blockStarted]);
   const volume = useMemo(() => weeklyVolume(7, log), [log]);
   const readout = useMemo(() => weeklyReadout(volume, profile.daysPerWeek, sessionsInWindow(7, planLog(log))), [volume, profile.daysPerWeek, log]);
-  const quickVolume = useMemo(() => weeklyVolume(7, log.filter(isQuick)), [log]);
+  const quickVolume = useMemo(() => weeklyVolume(7, log.filter(isOffPlan)), [log]);
   const history = useMemo(() => sessionHistory(log), [log]);
   // Which plan days are ticked off: plan sessions only.
 
@@ -383,6 +387,28 @@ function App() {
     }));
   };
 
+  /* ── a workout done without the app ─────────────────────────────────────── */
+  const saveManual = ({ date, title, rows }) => {
+    // today → now; an earlier day → midday, so it lands on that date in every chart
+    const at = date === localDate() ? Date.now() : new Date(`${date}T12:00:00`).getTime();
+    const customs = profile.customExercises || [];
+    const { entries, newCustoms } = entriesFromRows(rows, { sessionId: newSessionId(), at, label: title || "Logged workout", customs });
+    updateLog((prev) => entries.reduce((l, e) => upsertEntry(l, e), prev));
+    if (newCustoms.length) setProfile((p) => ({ ...p, customExercises: [...(p.customExercises || []), ...newCustoms].slice(-200) }));
+    return { moves: entries.length, sets: entries.reduce((t, e) => t + e.sets, 0), newMoves: newCustoms.length };
+  };
+  const openLog = () => {
+    setLogReturn(tab === "log" ? logReturn : tab);
+    setTab("log");
+    try { window.scrollTo({ top: 0 }); } catch {}
+  };
+
+  /** Remove one past session everywhere: its sets leave volume, charts and progression. */
+  const deleteSession = (id) => {
+    repoRef.current?.deleteSession(id);
+    setLog((prev) => prev.filter((e) => e.sessionId !== id));
+  };
+
   const resetProfile = () => {
     setProfile({ ...DEFAULT_PROFILE, inventory: [...EQUIP_PRESETS.bw], customGear: [], blockStarted: Date.now() });
     setOnboarded(false); setSelected(new Set());
@@ -449,6 +475,17 @@ function App() {
       {qError && !quick && (
         <p className="rounded-xl border border-amberGold/50 bg-amberGold/10 px-4 py-3 text-[13px] text-amberGold">{qError}</p>
       )}
+      {!quick && (
+        <button onClick={openLog} data-testid="now-log-workout"
+          className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left hover:border-edge">
+          <span className="grid place-items-center w-9 h-9 rounded-lg bg-amberGold/15 text-amberGold shrink-0"><PenLine size={16} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-text">Already trained?</span>
+            <span className="block text-xs text-mute">Log a workout you did without the app so it counts.</span>
+          </span>
+          <ChevronRight size={16} className="text-faint shrink-0" />
+        </button>
+      )}
       <QuickPanel profile={profile} log={log} quick={quick} onStart={(cfg) => startQuick(cfg)}
         onChangeFocus={() => { setQuick(null); setRest(null); }}>
         <WorkoutPanel mode="quick" workout={quick} done={qDone} feels={qFeels} stale={false} {...sessionProps("quick")}
@@ -465,13 +502,14 @@ function App() {
       sessionsDone={progress.doneCount} weekPlan={weekPlan} progress={progress} quickVolume={quickVolume}
       recent={history.filter((h) => h.at >= Date.now() - 7 * 864e5)}
       onPickDay={(i) => generate(i, { jump: true })}
+      onLogWorkout={openLog} onDeleteSession={deleteSession}
       skillSlot={<SkillLadder skillId={profile.skill} inv={inv} log={log} />} />
   );
 
   const profilePanel = (
     <ProfilePanel profile={profile} onChange={patch} onReset={resetProfile}
       sessions={totalSessions(log)} history={history} account={account} onSignOut={signOut}
-      onRename={(name) => setAccount((a) => ({ ...a, name }))} log={log} sync={sync} />
+      onRename={(name) => setAccount((a) => ({ ...a, name }))} log={log} sync={sync} onDeleteSession={deleteSession} />
   );
 
   const nav = [
@@ -481,12 +519,16 @@ function App() {
     { id: "quick", label: "Now", icon: Zap, dot: !!quick },
     { id: "progress", label: "Progress", icon: LineChart },
   ];
-  const deskTab = ["plan", "quick", "progress"].includes(tab) ? tab : "workout";
+  const deskTab = ["plan", "quick", "progress", "log"].includes(tab) ? tab : "workout";
   const openProfile = () => {
     if (window.matchMedia && window.matchMedia("(min-width: 768px)").matches) setDrawer(true);
     else setTab("profile");
   };
-  const progressPanel = <ProgressPanel log={log} profile={profile} />;
+  const progressPanel = <ProgressPanel log={log} profile={profile} onLogWorkout={openLog} />;
+  const logPanel = (
+    <LogWorkoutPanel profile={profile} onSave={saveManual}
+      onBack={() => setTab(logReturn || "plan")} onViewProgress={() => setTab("progress")} />
+  );
 
   return (
     <div className="min-h-dvh bg-ink text-text">
@@ -529,7 +571,7 @@ function App() {
                 </button>
               ))}
             </div>
-            {deskTab === "plan" ? planPanel : deskTab === "quick" ? quickPanel : deskTab === "progress" ? progressPanel : workoutPanel}
+            {deskTab === "plan" ? planPanel : deskTab === "quick" ? quickPanel : deskTab === "progress" ? progressPanel : deskTab === "log" ? logPanel : workoutPanel}
           </div>
         </div>
       </main>
@@ -541,6 +583,7 @@ function App() {
         {tab === "quick" && quickPanel}
         {tab === "progress" && progressPanel}
         {tab === "profile" && profilePanel}
+        {tab === "log" && logPanel}
       </main>
 
       <nav className="md:hidden fixed inset-x-0 bottom-0 z-30 bg-surface/95 backdrop-blur border-t border-line pb-safe px-safe" data-testid="bottom-nav">

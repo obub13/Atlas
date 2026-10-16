@@ -43,9 +43,13 @@ export function createOutbox({ key, send, store = defaultStore, onStatus = () =>
       // everything queued for sessions/logs is about to be deleted anyway
       ops = ops.filter((o) => inFlight.has(o.id) || (o.kind !== "session" && o.kind !== "log"));
     }
+    if (op.drops) {
+      // queued writes this op makes pointless (e.g. logs of a session being deleted)
+      ops = ops.filter((o) => inFlight.has(o.id) || !op.drops.some((p) => o.key.startsWith(p)));
+    }
     const i = ops.findIndex((o) => o.key === op.key && !inFlight.has(o.id));
     if (i >= 0) ops[i] = { ...ops[i], row: op.row };
-    else ops.push({ ...op, id: ++seq });
+    else { const { drops, ...rest } = op; ops.push({ ...rest, id: ++seq }); }
     persist(); emit();
     schedule(0);
   }
@@ -65,7 +69,7 @@ export function createOutbox({ key, send, store = defaultStore, onStatus = () =>
       while (ops.length && !stopped) {
         const head = ops[0];
         let n = 1;
-        if (head.kind === "session" || head.kind === "log") {
+        if (head.kind === "session" || head.kind === "log" || head.kind === "deleteSession") {
           while (n < ops.length && n < BATCH && ops[n].kind === head.kind) n++;
         }
         const batch = ops.slice(0, n);

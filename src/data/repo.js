@@ -58,6 +58,14 @@ export function createRepo(client, userId, { store = localStore(), onStatus = ()
     else if (kind === "session") res = await client.from("workout_sessions").upsert(rows, { onConflict: "id" });
     else if (kind === "log") res = await client.from("exercise_logs").upsert(rows, { onConflict: "session_id,slot" });
     else if (kind === "reset") res = await client.from("workout_sessions").delete().eq("user_id", userId);
+    else if (kind === "deleteSession") {
+      // one request per session; its exercise logs go with it (on delete cascade)
+      for (const r of rows) {
+        res = await client.from("workout_sessions").delete().eq("id", r.id);
+        if (res.error) throw fail(res.error);
+      }
+      return;
+    }
     else throw Object.assign(new Error(`unknown op ${kind}`), { permanent: true });
     if (res.error) throw fail(res.error);
   }
@@ -76,6 +84,10 @@ export function createRepo(client, userId, { store = localStore(), onStatus = ()
       else if (op.kind === "reset") { sById.clear(); lByKey.clear(); }
       else if (op.kind === "session") sById.set(op.row.id, { ...(sById.get(op.row.id) || {}), ...op.row });
       else if (op.kind === "log") lByKey.set(`${op.row.session_id}|${op.row.slot}`, op.row);
+      else if (op.kind === "deleteSession") {
+        sById.delete(op.row.id);
+        for (const k of [...lByKey.keys()]) if (k.startsWith(op.row.id + "|")) lByKey.delete(k);
+      }
     }
     return { profileRow, sessions: [...sById.values()], logs: [...lByKey.values()] };
   }
@@ -134,13 +146,19 @@ export function createRepo(client, userId, { store = localStore(), onStatus = ()
     snapshot = d.snapshot;
   }
 
+  /** Delete one session and everything logged in it — on this device now, on the server when it can. */
+  function deleteSession(id) {
+    for (const k of [...snapshot.keys()]) if (k.startsWith(id + "|")) snapshot.delete(k);
+    outbox.enqueue({ kind: "deleteSession", key: `delete:${id}`, row: { id }, drops: [`session:${id}`, `log:${id}|`] });
+  }
+
   function resetAll() {
     outbox.enqueue({ kind: "reset", key: "reset", row: null });
     snapshot = new Map();
   }
 
   return {
-    load, saveProfile, syncLog, resetAll,
+    load, saveProfile, syncLog, resetAll, deleteSession,
     flush: outbox.flush, kick: outbox.kick, status: outbox.status, stop: outbox.stop,
     deadOps: outbox.deadOps, clearDead: outbox.clearDead,
     entryKey,

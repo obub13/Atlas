@@ -2,7 +2,7 @@
 // Supabase stand-in (real supabase-js over HTTP, real Postgres + RLS).
 // Covers: connect → sign up → onboard → train → every write lands in the DB →
 // offline logging survives a closed tab → single sessions → weekly split →
-// Progress tab → sign out / wrong password / sign in → a second user sees
+// Progress tab → log a workout done without the app (custom move) → delete it → sign out / wrong password / sign in → a second user sees
 // nothing → layout at 360px and on desktop.
 //   npm run build && node tests/e2e.mjs
 import { chromium } from "playwright";
@@ -217,6 +217,65 @@ ok(await main(page).getByTestId("volume-card").locator("rect").count() > 10, "we
 ok(/L-Sit/.test(await main(page).getByTestId("skills-card").innerText()), "skill ladder shows the L-sit");
 await page.screenshot({ path: "tests/shots/progress-mobile.png", fullPage: true }).catch(() => {});
 
+/* ── 7b. a workout done without the app ───────────────────────────────────── */
+console.log("log a workout");
+const MSG = "today i did these workouts with a kettlebell : 3x10 all\n\nrussian twist, tridents, leg raises, kettlebell pushup pass through and halos";
+const sessionsBeforeLog = (await db.sessions(uid)).length;
+await main(page).getByTestId("progress-log-workout").click();
+await main(page).getByTestId("log-panel").waitFor();
+await main(page).getByTestId("log-text").fill(MSG);
+await main(page).getByTestId("log-fill").click();
+const logRows = main(page).getByTestId("log-row");
+ok(await logRows.count() === 5, `the message becomes five exercises (${await logRows.count()})`);
+const statuses = await main(page).getByTestId("row-status").evaluateAll((els) => els.map((e) => e.dataset.status));
+ok(statuses.join() === "library,none,library,known,known", `russian twist + leg raises from the library, pass-through + halos known, tridents new (${statuses.join()})`);
+ok(await main(page).getByTestId("log-save").isDisabled(), "can't save while tridents has no muscles");
+ok(/Which muscle/.test(await main(page).getByTestId("log-blocker").innerText()), "…and it says why");
+const trident = logRows.nth(1);
+await trident.getByTestId("primary-core").click();
+await trident.getByTestId("secondary-frontDelts").click();
+await logRows.nth(0).getByTestId("row-kg").fill("12");
+await logRows.nth(0).getByRole("button", { name: "Right", exact: true }).click();
+await main(page).getByTestId("log-title").fill("Kettlebell core");
+ok(await main(page).getByTestId("log-save").isEnabled(), "with muscles picked, it can be saved");
+ok(/Save 5 exercises · 15 sets/i.test(await main(page).getByTestId("log-save").innerText()), "the button says what will be saved (5 exercises, 15 sets)");
+await main(page).getByTestId("log-save").click();
+await main(page).getByTestId("log-success").waitFor();
+ok(true, "saved → confirmation");
+await until(async () => (await db.sessions(uid)).some((s) => s.source === "manual"));
+const ms = (await db.sessions(uid)).find((s) => s.source === "manual");
+const mlogs = (await db.logs(uid)).filter((l) => l.session_id === ms?.id);
+ok(ms && ms.label === "Kettlebell core" && ms.day_key === null, "stored as a manual session with its name, no plan day");
+await until(async () => (await db.logs(uid)).filter((l) => l.session_id === ms.id).length === 5);
+const ml = (await db.logs(uid)).filter((l) => l.session_id === ms.id);
+const rt = ml.find((l) => l.exercise_id === "russiantwist"), tr = ml.find((l) => l.exercise_id === "custom:tridents");
+ok(ml.length === 5 && ml.every((l) => l.sets === 3 && l.reps_min === 10 && l.reps_max === 10), "five rows, each 3 × 10");
+ok(rt && +rt.load_kg === 12 && rt.feel === "right", "russian twist keeps its library id, 12 kg and the rating");
+ok(tr && tr.muscles.join() === "core,frontDelts" && tr.feel === null, "tridents saved under a custom id with the muscles picked");
+await until(async () => ((await db.profile(uid)).settings.customExercises || []).some((c) => c.id === "custom:tridents"));
+ok(((await db.profile(uid)).settings.customExercises || []).some((c) => c.id === "custom:tridents" && c.primary === "core"), "the new move is remembered in the profile");
+void mlogs;
+await main(page).getByRole("button", { name: /View progress/ }).click();
+const optNames = await main(page).getByLabel("Exercise").locator("option").allInnerTexts();
+ok(optNames.some((t) => /Tridents/.test(t)) && optNames.some((t) => /Kettlebell Halo/.test(t)), "Progress lists the logged moves by name (Tridents, Kettlebell Halo)");
+ok(new RegExp(`SESSIONS LOGGED\\s*${sessionsBeforeLog + 1}\\b`, "i").test(await main(page).getByTestId("progress-stats").innerText()), "the session count includes it");
+await page.getByRole("button", { name: "Week", exact: true }).click();
+ok(await main(page).getByText("3/3 done").isVisible(), "the weekly plan is untouched (still 3/3)");
+const mrow = main(page).getByTestId("history-row").filter({ hasText: "Kettlebell core" });
+ok(await mrow.isVisible() && /Logged/i.test(await mrow.innerText()), "Week lists it under Logged this week");
+// next time, tridents is recognised
+await main(page).getByRole("button", { name: /Log a workout/ }).click();
+await main(page).getByTestId("log-text").fill("tridents 3x12");
+await main(page).getByTestId("log-fill").click();
+ok((await main(page).getByTestId("row-status").first().getAttribute("data-status")) === "custom", "the next time, Tridents is recognised with its muscles");
+await main(page).getByRole("button", { name: /Back/ }).click();
+// delete it
+await main(page).getByTestId("history-row").filter({ hasText: "Kettlebell core" }).getByRole("button", { name: /Delete Kettlebell core/ }).click();
+await main(page).getByTestId("history-row").filter({ hasText: "Kettlebell core" }).getByRole("button", { name: "Delete", exact: true }).click();
+await until(async () => !(await db.sessions(uid)).some((s) => s.source === "manual"));
+ok(!(await db.sessions(uid)).some((s) => s.source === "manual") && !(await db.logs(uid)).some((l) => l.session_id === ms.id), "deleting it removes the session and its sets from the database");
+ok(!(await main(page).getByTestId("history-row").filter({ hasText: "Kettlebell core" }).count()) && await main(page).getByText("3/3 done").isVisible(), "…and from the Week tab, plan still 3/3");
+
 /* ── 8. sign out, wrong password, sign back in ────────────────────────────── */
 console.log("auth");
 await page.getByRole("button", { name: "Open profile" }).click();
@@ -264,6 +323,13 @@ for (const tab of ["Week", "Body", "Workout", "Now", "Progress"]) {
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(over <= 0, `${tab} fits 360px (overflow ${over}px)`);
 }
+await page.getByRole("button", { name: "Now", exact: true }).click();
+await main(page).getByTestId("now-log-workout").click();
+await main(page).getByTestId("log-text").fill("3x10 all: tridents, halos, renegade rows");
+await main(page).getByTestId("log-fill").click();
+await wait(150);
+ok((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, "Log a workout fits 360px (with the muscle picker open)");
+await page.screenshot({ path: "tests/shots/log-mobile.png", fullPage: true }).catch(() => {});
 await page.getByRole("button", { name: "Open profile" }).click();
 ok((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, "Profile fits 360px");
 

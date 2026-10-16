@@ -40,7 +40,9 @@ export function upsertEntry(log, e) {
 // lift progression. It is NOT part of the weekly routine: it never ticks off a
 // plan day, never counts toward "3/3 done", never reshuffles the plan.
 export const isQuick = (e) => e.source === "quick";
-export const planLog = (log) => log.filter((e) => !isQuick(e));
+/** Anything that isn't a plan day: a single session, or a workout logged by hand. */
+export const isOffPlan = (e) => e.source === "quick" || e.source === "manual";
+export const planLog = (log) => log.filter((e) => !isOffPlan(e));
 
 /** Session key — legacy entries without an id group by day + source. */
 const keyOf = (e) => e.sessionId || `${new Date(e.at).toDateString()}|${e.source || "plan"}`;

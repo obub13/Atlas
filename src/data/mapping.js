@@ -8,7 +8,7 @@ const ms = (s) => (s ? Date.parse(s) : Date.now());
 
 /* ── profile ───────────────────────────────────────────────────────────────── */
 const SETTINGS_KEYS = ["age", "height", "weight", "level", "goal", "equipment", "inventory", "customGear",
-  "skill", "excluded", "sessionMinutes", "daysPerWeek", "quickPrefs"];
+  "skill", "excluded", "sessionMinutes", "daysPerWeek", "quickPrefs", "customExercises"];
 
 export function profileFromRow(row) {
   if (!row) return null;
@@ -73,7 +73,7 @@ export function sessionRowFromEntries(entries) {
   const first = entries.reduce((a, b) => (b.at < a.at ? b : a));
   return {
     id: first.sessionId,
-    source: first.source === "quick" ? "quick" : "plan",
+    source: ["quick", "manual"].includes(first.source) ? first.source : "plan",
     format: first.format === "circuit" ? "circuit" : "sets",
     label: first.label ? String(first.label).slice(0, 80) : null,
     day_key: first.dayKey ? String(first.dayKey).slice(0, 300) : null,

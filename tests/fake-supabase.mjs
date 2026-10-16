@@ -5,7 +5,7 @@
 // test talks to it exactly as it would talk to supabase.co — same client
 // library, same requests, same RLS — so these tests exercise the wire too.
 import http from "http";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { randomUUID } from "crypto";
 import { PGlite } from "@electric-sql/pglite";
 
@@ -26,7 +26,9 @@ export async function startFakeSupabase({ port = 0, requireEmailConfirm = false 
     grant usage on schema public, auth to anon, authenticated;
     grant execute on function auth.uid() to anon, authenticated;
   `);
-  await db.exec(readFileSync(new URL("../supabase/migrations/20261015000000_init.sql", import.meta.url), "utf8"));
+  // every migration, in order — exactly what the live project has applied
+  const MIGRATIONS = new URL("../supabase/migrations/", import.meta.url);
+  for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) await db.exec(readFileSync(new URL(f, MIGRATIONS), "utf8"));
   await db.exec("grant select, insert, update, delete on all tables in schema public to anon, authenticated;");
 
   // one connection → serialise every request

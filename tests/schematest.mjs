@@ -3,7 +3,7 @@
 // Proves: profiles appear on sign-up, every table is owner-only, logs can't be
 // attached to someone else's session, upserts are idempotent, bad data bounces.
 import { PGlite } from "@electric-sql/pglite";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 
 const db = new PGlite();
 let failures = 0;
@@ -21,7 +21,9 @@ await db.exec(`
   grant usage on schema public, auth to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
 `);
-await db.exec(readFileSync(new URL("../supabase/migrations/20261015000000_init.sql", import.meta.url), "utf8"));
+// every migration, in order — exactly what the live project has applied
+const MIGRATIONS = new URL("../supabase/migrations/", import.meta.url);
+for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) await db.exec(readFileSync(new URL(f, MIGRATIONS), "utf8"));
 await db.exec(`
   grant select, insert, update, delete on all tables in schema public to anon, authenticated;
 `);
@@ -75,6 +77,8 @@ ok(r.rows[0].feel === null, "an unrated move can be logged");
 await rejects(() => db.query("insert into public.exercise_logs (session_id, slot, exercise_id, sets, feel) values ($1, '9', 'x', 3, 'meh')", [S1]), "an unknown feel is rejected");
 await rejects(() => db.query("insert into public.exercise_logs (session_id, slot, exercise_id, sets) values ($1, '8', 'x', 99)", [S1]), "an impossible set count is rejected");
 await rejects(() => db.query("insert into public.workout_sessions (id, source) values (gen_random_uuid(), 'cardio')"), "an unknown session source is rejected");
+await db.query("insert into public.workout_sessions (id, source, label) values (gen_random_uuid(), 'manual', 'Kettlebell core')");
+ok(true, "a hand-logged (manual) session is accepted");
 
 // B can't see or touch A's training
 await as(B);

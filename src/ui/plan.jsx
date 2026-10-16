@@ -1,5 +1,5 @@
-import React from "react";
-import { CalendarDays, TrendingUp, AlertTriangle, Check, Flame, Clock, Zap, History, Layers, ChevronRight } from "lucide-react";
+import React, { useState } from "react";
+import { CalendarDays, TrendingUp, AlertTriangle, Check, Flame, Clock, Zap, History, Layers, ChevronRight, PenLine, Trash2, Plus } from "lucide-react";
 import { MUSCLES, WEEKLY } from "../engine/data.js";
 import { cx, SectionTitle } from "./ui.jsx";
 
@@ -130,30 +130,48 @@ export function WeekPreview({ weekPlan, progress, profile, selectedCount }) {
   );
 }
 
-/** One past session: when, what, and whether it belonged to the plan. */
-export function SessionRow({ s }) {
-  const quick = s.source === "quick";
+const KIND = {
+  plan:   { label: "Plan",   cls: "bg-mint/10 text-mint border border-mint/30", icon: "bg-mint/15 text-mint", fallback: "Plan session" },
+  quick:  { label: "Single", cls: "bg-sky/10 text-sky border border-sky/30",    icon: "bg-sky/15 text-sky",   fallback: "Single session" },
+  manual: { label: "Logged", cls: "bg-amberGold/10 text-amberGold border border-amberGold/30", icon: "bg-amberGold/15 text-amberGold", fallback: "Logged workout" },
+};
+
+/** One past session: when, what, whether it belonged to the plan — and, if allowed, a delete. */
+export function SessionRow({ s, onDelete }) {
+  const k = KIND[s.source] || KIND.plan;
+  const [confirm, setConfirm] = useState(false);
   return (
-    <li className="min-w-0 flex items-center gap-3 rounded-xl bg-surface border border-line px-4 py-3" data-testid="history-row">
-      <span className={cx("grid place-items-center w-9 h-9 rounded-lg shrink-0", quick ? "bg-sky/15 text-sky" : "bg-mint/15 text-mint")}>
-        {quick ? <Zap size={16} /> : <Check size={16} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-text truncate">{s.label || (quick ? "Single session" : "Plan session")}</p>
-        <p className="text-xs text-mute mt-0.5">
-          {dayName(s.at)} · {s.moves} move{s.moves === 1 ? "" : "s"} · {s.sets} sets{s.format === "circuit" ? " · circuit" : ""}
-        </p>
+    <li className="min-w-0 rounded-xl bg-surface border border-line px-4 py-3" data-testid="history-row">
+      <div className="flex items-center gap-3">
+        <span className={cx("grid place-items-center w-9 h-9 rounded-lg shrink-0", k.icon)}>
+          {s.source === "quick" ? <Zap size={16} /> : s.source === "manual" ? <PenLine size={16} /> : <Check size={16} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-text truncate">{s.label || k.fallback}</p>
+          <p className="text-xs text-mute mt-0.5">
+            {dayName(s.at)} · {s.moves} move{s.moves === 1 ? "" : "s"} · {s.sets} sets{s.format === "circuit" ? " · circuit" : ""}
+          </p>
+        </div>
+        <span className={cx("shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", k.cls)}>{k.label}</span>
+        {onDelete && !confirm && (
+          <button onClick={() => setConfirm(true)} aria-label={`Delete ${s.label || k.fallback}`} className="shrink-0 text-faint hover:text-crit">
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
-      <span className={cx("shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-        quick ? "bg-sky/10 text-sky border border-sky/30" : "bg-mint/10 text-mint border border-mint/30")}>
-        {quick ? "Single" : "Plan"}
-      </span>
+      {confirm && (
+        <div className="flex items-center gap-2 mt-2.5 text-[12px]">
+          <span className="flex-1 text-mute">Delete this workout and its sets? Progress is recalculated.</span>
+          <button onClick={() => setConfirm(false)} className="rounded-lg border border-line px-2.5 py-1 font-semibold text-mute hover:text-text">Keep</button>
+          <button onClick={() => { setConfirm(false); onDelete(s.id); }} className="rounded-lg bg-crit/90 px-2.5 py-1 font-bold text-ink hover:bg-crit">Delete</button>
+        </div>
+      )}
     </li>
   );
 }
 
-export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone, onPickDay, skillSlot, weekPlan, progress, quickVolume = {}, recent = [] }) {
-  const extras = recent.filter((r) => r.source === "quick").length;
+export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone, onPickDay, skillSlot, weekPlan, progress, quickVolume = {}, recent = [], onLogWorkout, onDeleteSession }) {
+  const extras = recent.filter((r) => r.source === "quick" || r.source === "manual").length;
   const total = weekPlan.days.length || profile.daysPerWeek;
 
   return (
@@ -176,7 +194,7 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
         {extras > 0 && (
           <p className="text-[12px] text-sky mt-2 flex items-center gap-1.5" data-testid="extra-sessions">
             <Zap size={13} className="shrink-0" aria-hidden />
-            +{extras} single session{extras === 1 ? "" : "s"} this week — extra work, logged in your history, not counted against the plan.
+            +{extras} extra workout{extras === 1 ? "" : "s"} this week (single sessions and ones you logged) — in your history and progress, not counted against the plan.
           </p>
         )}
       </div>
@@ -194,12 +212,16 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
         <div className="mt-3"><WeekCoverage weekPlan={weekPlan} profile={profile} /></div>
       </section>
 
-      {recent.length > 0 && (
-        <section>
-          <SectionTitle icon={History} aside={<span className="text-xs text-faint">last 7 days</span>}>Logged this week</SectionTitle>
-          <ol className="grid gap-2">{recent.map((s) => <SessionRow key={s.id} s={s} />)}</ol>
-        </section>
-      )}
+      <section>
+        <SectionTitle icon={History} aside={onLogWorkout && (
+          <button onClick={onLogWorkout} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-mute hover:text-text hover:border-edge">
+            <Plus size={13} /> Log a workout
+          </button>
+        )}>Logged this week</SectionTitle>
+        {recent.length > 0
+          ? <ol className="grid gap-2">{recent.map((s) => <SessionRow key={s.id} s={s} onDelete={onDeleteSession} />)}</ol>
+          : <p className="text-[13px] text-mute">Nothing yet this week. Trained without the app? Log it so it counts.</p>}
+      </section>
 
       <section>
         <SectionTitle icon={TrendingUp} aside={<span className="text-xs text-faint">last 7 days</span>}>Volume</SectionTitle>
@@ -223,7 +245,7 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
                     <p className={cx("text-[13px] font-semibold tabular-nums shrink-0", tone.cls)}>
                       {r.sets} sets <span className="text-faint font-normal">· {tone.note}</span>
                       {quickVolume[r.muscle] > 0 && (
-                        <span className="block text-[11px] text-sky font-normal text-right">incl. {+quickVolume[r.muscle].toFixed(1)} from single sessions</span>
+                        <span className="block text-[11px] text-sky font-normal text-right">incl. {+quickVolume[r.muscle].toFixed(1)} from extra workouts</span>
                       )}
                     </p>
                   </div>

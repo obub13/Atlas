@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { LineChart, CalendarDays, BarChart3, Target, Table2, TrendingUp, TrendingDown, Minus, Flame, Check } from "lucide-react";
+import { LineChart, CalendarDays, BarChart3, Target, Table2, TrendingUp, TrendingDown, Minus, Flame, Check, PenLine } from "lucide-react";
 import { MUSCLES, WEEKLY } from "../engine/data.js";
 import { summary, exercisesLogged, liftSeries, calendar, weeklyVolumeSeries, skillTimeline, niceTicks } from "../engine/progress.js";
 import { cx, SectionTitle } from "./ui.jsx";
@@ -134,7 +134,7 @@ function LiftChart({ series }) {
       </svg>
       {h && (
         <Tip x={x(h.at)} y={y(h.value)} w={width}>
-          <span className="block text-mute">{fmtDay(h.at)} · {h.source === "quick" ? "single session" : "plan"}</span>
+          <span className="block text-mute">{fmtDay(h.at)} · {h.source === "quick" ? "single session" : h.source === "manual" ? "logged workout" : "plan"}</span>
           <span className="block font-semibold">
             {h.value} {unit}
             <span className="font-normal text-mute"> · {h.sets} × {h.holdSecs ? `${h.holdSecs}s` : h.reps ? `${h.reps[0]}–${h.reps[1]}` : ""}{h.feel ? ` · felt ${h.feel}` : ""}</span>
@@ -145,12 +145,12 @@ function LiftChart({ series }) {
   );
 }
 
-function LiftCard({ log }) {
-  const list = useMemo(() => exercisesLogged(log), [log]);
+function LiftCard({ log, customs = [] }) {
+  const list = useMemo(() => exercisesLogged(log, customs), [log, customs]);
   const [pick, setPick] = useState(null);
   const [table, setTable] = useState(false);
   const id = pick && list.some((l) => l.id === pick) ? pick : list[0]?.id;
-  const series = useMemo(() => (id ? liftSeries(log, id) : null), [log, id]);
+  const series = useMemo(() => (id ? liftSeries(log, id, customs) : null), [log, id, customs]);
   if (!list.length) {
     return (
       <Card icon={LineChart} title="Lift progress" testid="lift-card">
@@ -372,7 +372,8 @@ function SkillsCard({ log }) {
 }
 
 /* ── the tab ─────────────────────────────────────────────────────────────── */
-export function ProgressPanel({ log }) {
+export function ProgressPanel({ log, profile, onLogWorkout }) {
+  const customs = profile?.customExercises || [];
   const s = useMemo(() => summary(log), [log]);
   return (
     <div className="flex flex-col gap-4 pb-4" data-testid="progress-panel">
@@ -382,10 +383,16 @@ export function ProgressPanel({ log }) {
           <Flame size={20} className="text-ember" aria-hidden />
           {s.sessions ? `${s.sessions} session${s.sessions === 1 ? "" : "s"} in the books` : "Nothing logged yet"}
         </h2>
-        <p className="text-[13px] text-mute mt-1">Everything here is worked out from the sets you’ve logged — plan days and single sessions alike.</p>
+        <p className="text-[13px] text-mute mt-1">Everything here is worked out from the sets you’ve logged — plan days, single sessions and workouts you logged yourself.</p>
+        {onLogWorkout && (
+          <button onClick={onLogWorkout} data-testid="progress-log-workout"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-mute hover:text-text hover:border-edge">
+            <PenLine size={13} /> Log a workout you did without the app
+          </button>
+        )}
       </div>
       <Stats s={s} />
-      <LiftCard log={log} />
+      <LiftCard log={log} customs={customs} />
       <CalendarCard log={log} />
       <VolumeCard log={log} />
       <SkillsCard log={log} />

@@ -277,7 +277,7 @@ export function weekStart(now = Date.now()) {
 /** Which plan days are done this week, and which one is up next. */
 export function weekProgress(plan, log, now = Date.now()) {
   const since = weekStart(now);
-  const doneKeys = new Set(log.filter((e) => e.source !== "quick" && e.at >= since && e.dayKey).map((e) => e.dayKey));
+  const doneKeys = new Set(log.filter((e) => (e.source || "plan") === "plan" && e.at >= since && e.dayKey).map((e) => e.dayKey));
   const done = plan.days.map((d) => doneKeys.has(d.key));
   const next = done.indexOf(false);
   return { done, doneCount: done.filter(Boolean).length, next: next < 0 ? null : next, complete: plan.days.length > 0 && next < 0 };

@@ -3,6 +3,8 @@
 // per session). The database normalises it into sessions + exercise_logs.
 // This module is the only place that knows both shapes. Pure, no I/O.
 
+import { canonicalId } from "../engine/logparse.js";
+
 const iso = (ms) => new Date(ms).toISOString();
 const ms = (s) => (s ? Date.parse(s) : Date.now());
 
@@ -44,7 +46,8 @@ export function entriesFromRows(sessions, logs) {
     .map((l) => {
       const s = byId.get(l.session_id) || {};
       return {
-        exerciseId: l.exercise_id,
+        // a custom move the library has since learned reads as the library move
+        exerciseId: canonicalId(l.exercise_id),
         ladder: l.ladder ?? null,
         rank: l.rank ?? null,
         stageName: l.stage_name ?? null,

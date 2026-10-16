@@ -22,7 +22,7 @@ import { ProgressPanel } from "./progress.jsx";
 import { ProfilePanel } from "./profile.jsx";
 import { QuickPanel } from "./quickui.jsx";
 import { LogWorkoutPanel, localDate } from "./logui.jsx";
-import { entriesFromRows } from "../engine/logparse.js";
+import { entriesFromRows, canonicalId } from "../engine/logparse.js";
 import { planWeek, weekProgress } from "../engine/week.js";
 
 const DEFAULT_PROFILE = {
@@ -36,7 +36,8 @@ function normalize(p) {
   if (!Array.isArray(out.inventory) || !out.inventory.length) out.inventory = [...(EQUIP_PRESETS[out.equipment] || EQUIP_PRESETS.min)];
   if (!Array.isArray(out.customGear)) out.customGear = [];
   if (!Array.isArray(out.excluded)) out.excluded = [];
-  if (!Array.isArray(out.customExercises)) out.customExercises = [];
+  // custom moves the library has since learned (e.g. halos) stop being custom
+  out.customExercises = (Array.isArray(out.customExercises) ? out.customExercises : []).filter((c) => c && canonicalId(c.id, c.name) === c.id);
   return out;
 }
 

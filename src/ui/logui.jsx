@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { PenLine, Plus, X, Wand2, Check, ChevronLeft, AlertTriangle, CalendarDays, LineChart, Sparkles, BookOpen, History } from "lucide-react";
 import { MUSCLES, EXERCISES } from "../engine/data.js";
-import { parseWorkoutText, matchMove, rowProblem, musclesOf, KNOWN_MOVES } from "../engine/logparse.js";
+import { parseWorkoutText, matchMove, rowProblem, musclesOf, KNOWN_MOVES, canonicalId } from "../engine/logparse.js";
 import { cx, SectionTitle } from "./ui.jsx";
 
 const FEELS = [
@@ -162,7 +162,7 @@ function RowCard({ row, index, customs, onChange, onRemove, canRemove }) {
 }
 
 export function LogWorkoutPanel({ profile, onSave, onBack, onViewProgress }) {
-  const customs = profile.customExercises || [];
+  const customs = useMemo(() => (profile.customExercises || []).filter((c) => canonicalId(c.id, c.name) === c.id), [profile.customExercises]);
   const today = localDate();
   const [text, setText] = useState("");
   const [date, setDate] = useState(today);

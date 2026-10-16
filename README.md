@@ -8,6 +8,7 @@ A personal-trainer web app. Pick the muscles you want to train, and it splits th
 
 - **Weekly split.** The muscles you pick are spread across your training days (Push / Pull / Legs, Upper / Lower, quad and hinge days…). Every possible arrangement is scored, then the top candidates are built for real to check which muscles actually get trained. The week tells you honestly when your time doesn't fit everything.
 - **Progression.** Double progression (reps, then load), a deload after two hard sessions, and bodyweight ladders. Skills such as the L-sit move up a stage after two clean sessions in a row.
+- **Kettlebell-first.** 22 moves that only exist with a bell (swings, side-to-side swings, halos, around the world, cleans, clean & press, snatches, Turkish get-ups, windmills, carries…) plus bell warm-ups. A one-bell kit gets a full program, and loads are totals for a single bell.
 - **Single sessions.** A one-off workout (core, arms, full body…) as a circuit or straight sets. It counts toward your history and progression but never toward the weekly plan.
 - **Log a workout done without the app.** Type it the way you'd text it ("3x10 all: russian twist, tridents, halos") and it fills in the rows. Library moves keep their id, so they feed that lift's progression; a move Atlas doesn't know gets its muscles picked once and is remembered. It counts toward history, volume and progress, never toward plan days, and any session can be deleted.
 - **Progress.** Charts per lift, a training calendar, a weekly-volume heatmap per muscle, and skill-ladder dates.

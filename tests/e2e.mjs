@@ -228,7 +228,7 @@ await main(page).getByTestId("log-fill").click();
 const logRows = main(page).getByTestId("log-row");
 ok(await logRows.count() === 5, `the message becomes five exercises (${await logRows.count()})`);
 const statuses = await main(page).getByTestId("row-status").evaluateAll((els) => els.map((e) => e.dataset.status));
-ok(statuses.join() === "library,none,library,known,known", `russian twist + leg raises from the library, pass-through + halos known, tridents new (${statuses.join()})`);
+ok(statuses.join() === "library,none,library,library,library", `russian twist, leg raises, pass-through and halos from the library, tridents new (${statuses.join()})`);
 ok(await main(page).getByTestId("log-save").isDisabled(), "can't save while tridents has no muscles");
 ok(/Which muscle/.test(await main(page).getByTestId("log-blocker").innerText()), "…and it says why");
 const trident = logRows.nth(1);

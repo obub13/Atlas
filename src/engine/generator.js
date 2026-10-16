@@ -98,6 +98,8 @@ export function repsFor(ex, profile, inv = inventoryOf(profile)) {
   const goal = GOALS[profile.goal] || GOALS.muscle;
   const level = LEVELS[profile.level] || LEVELS.intermediate;
   if (ex.timed) return { holdSecs: round(goal.holdSecs * level.holdMult, 5), reps: null };
+  // a few moves have their own sensible range whatever the goal (get-ups, windmills)
+  if (ex.repRange) return { reps: [...ex.repRange], holdSecs: null };
   // A push-up cannot be made heavier, so the rep target has to move instead —
   // and neither can a hip thrust if there's nothing in the house to hold.
   // "Loadable" means loadable BY THIS PERSON, with the gear they actually own.

@@ -1,11 +1,11 @@
 // Logging a workout done without the app: the free-text parser, the rows → log
 // mapping, and the rule that logged workouts count everywhere except plan days.
-import { parseWorkoutText, matchMove, entriesFromRows, rowProblem, musclesOf, tokens, slugOf } from "../src/engine/logparse.js";
+import { parseWorkoutText, matchMove, entriesFromRows, rowProblem, musclesOf, tokens, slugOf, canonicalId } from "../src/engine/logparse.js";
 import { upsertEntry, planLog, weeklyVolume, sessionHistory, sessionsInWindow, totalSessions } from "../src/engine/history.js";
 import { progressionFor } from "../src/engine/generator.js";
 import { planWeek, weekProgress } from "../src/engine/week.js";
 import { exercisesLogged, liftSeries, summary, nameOf } from "../src/engine/progress.js";
-import { sessionRowFromEntries } from "../src/data/mapping.js";
+import { sessionRowFromEntries, entriesFromRows as mapEntries } from "../src/data/mapping.js";
 import { EXERCISES, EQUIP_PRESETS, MUSCLES } from "../src/engine/data.js";
 
 let failures = 0;
@@ -21,8 +21,8 @@ const by = (rows, text) => rows.find((r) => r.text.toLowerCase().includes(text))
   ok(rows.every((r) => r.sets === 3 && r.reps === 10 && r.holdSecs == null), "every row is 3 × 10");
   ok(by(rows, "russian")?.match?.type === "library" && by(rows, "russian").match.id === "russiantwist", "russian twist → the library's Russian Twist (feeds its progression)");
   ok(by(rows, "leg raise")?.match?.id === "legraise", "leg raises → Lying Leg Raise");
-  ok(by(rows, "pass")?.match?.type === "known" && by(rows, "pass").match.primary === "chest", "push-up pass-through → a known move, chest first");
-  ok(by(rows, "halo")?.match?.name === "Kettlebell Halo" && by(rows, "halo").match.primary === "frontDelts", "halos → Kettlebell Halo, shoulders");
+  ok(by(rows, "pass")?.match?.id === "kbpassthrough" && by(rows, "pass").match.primary === "chest", "push-up pass-through → the library's Push-Up Pass-Through, chest first");
+  ok(by(rows, "halo")?.match?.id === "kbhalo" && by(rows, "halo").match.primary === "frontDelts", "halos → the library's Kettlebell Halo, shoulders");
   ok(by(rows, "trident") && !by(rows, "trident").match, "tridents → unknown, so the person picks the muscles");
   ok(rowProblem(by(rows, "trident")) === "Which muscle did it work?", "an unknown move can't be saved until it has a muscle");
   ok(rows.filter((r) => r.match).every((r) => rowProblem(r) === null), "every recognised row is ready to save");
@@ -70,7 +70,7 @@ const { entries, newCustoms } = entriesFromRows(rows, { sessionId: "manual-1", a
   ok(entries.find((e) => e.exerciseId === "russiantwist")?.load === 12, "library moves keep their library id and load");
   const t = entries.find((e) => e.exerciseId === "custom:tridents");
   ok(t && t.muscles.join() === "core,frontDelts,abs", "an unknown move gets a custom id and the muscles picked");
-  ok(newCustoms.length === 3 && newCustoms.some((c) => c.id === "custom:tridents" && c.primary === "core"), "new moves (tridents, pass-through, halo) are returned to remember");
+  ok(newCustoms.length === 1 && newCustoms[0].id === "custom:tridents" && newCustoms[0].primary === "core", "only the truly new move (tridents) is returned to remember");
   ok(entries.filter((e) => !e.feel).length === 4, "unrated rows are stored unrated");
   const again = entriesFromRows(parseWorkoutText("tridents 3x12", newCustoms).rows, { sessionId: "manual-2", at: now, label: "x", customs: newCustoms });
   ok(again.entries[0].exerciseId === "custom:tridents" && again.newCustoms.length === 0, "logging it again reuses the saved move — one progress line, not two");
@@ -111,6 +111,40 @@ const { entries, newCustoms } = entriesFromRows(rows, { sessionId: "manual-1", a
   // the date picker: a workout from yesterday lands yesterday
   const y = entriesFromRows(rows.slice(0, 1), { sessionId: "manual-y", at: now - DAY, label: "y", customs: [] }).entries[0];
   ok(new Date(y.at).toDateString() === new Date(now - DAY).toDateString(), "a back-dated workout is stored on its own day");
+}
+
+// 6 · kettlebell moves, the way people name them
+{
+  const list = "3x10 all: halos, around the world, bicep curls, suitcase walk, kettlebell swings, side-to-side swings, turkish get up, windmills, cleans, clean and press, snatches, high pulls, renegade rows, goblet squat, figure 8, thrusters, sumo deadlift, cossack squat, racked carry, waiter walk";
+  const want = ["kbhalo", "kbaroundworld", "dbcurl", "suitcase", "kbswing", "kbsideswing", "kbtgu", "kbwindmill", "kbclean", "kbcleanpress",
+    "kbsnatch", "kbhighpull", "kbrenegade", "gobletsquat", "kbfigure8", "kbthruster", "kbsumodl", "kbcossack", "kbrackcarry", "kbwaiter"];
+  const got = parseWorkoutText(list).rows.map((r) => r.match?.type === "library" ? r.match.id : `?${r.text}`);
+  const miss = want.filter((id, i) => got[i] !== id);
+  ok(!miss.length && got.length === want.length, `all ${want.length} kettlebell names map to their library move${miss.length ? ` (wrong: ${miss.map((m) => `${m}→${got[want.indexOf(m)]}`).join(", ")})` : ""}`);
+  ok(matchMove("swings").id === "kbswing" && matchMove("side to side swing").id === "kbsideswing", "a plain swing and a side-to-side swing are told apart");
+  ok(matchMove("barbell curl").id !== "dbcurl" && matchMove("bicep curl").id === "dbcurl", "“bicep curl” is the kettlebell/dumbbell curl; “barbell curl” isn't");
+  // every kettlebell move: performable with just a bell, never names other gear
+  const kbOnly = EXERCISES.filter((e) => (e.needs || []).includes("kettlebell"));
+  ok(kbOnly.length >= 20, `${kbOnly.length} kettlebell-specific moves in the library`);
+  ok(kbOnly.every((e) => e.needs.length === 1 && !/dumbbell|barbell|bench|chair|band|cable|machine|\bsteps?\b|wall|towel|table/i.test(e.name + " " + e.tip)), "each needs only the bell and mentions no other gear");
+  ok(EXERCISES.every((e) => !e.repRange || (e.repRange[0] >= 1 && e.repRange[0] <= e.repRange[1])), "rep-range overrides are sane");
+  const ids = EXERCISES.map((e) => e.id);
+  ok(new Set(ids).size === ids.length, "library ids are unique");
+}
+
+// 7 · custom moves the library has since learned migrate onto the library move
+{
+  ok(canonicalId("custom:kettlebell-halos") === "kbhalo" && canonicalId("custom:kettlebell-halo") === "kbhalo", "custom halos → kbhalo");
+  ok(canonicalId("custom:push-up-pass-through") === "kbpassthrough", "custom push-up pass-through → kbpassthrough");
+  ok(canonicalId("custom:tridents") === "custom:tridents" && canonicalId("russiantwist") === "russiantwist", "unknown customs and library ids are left alone");
+  const rowsDb = [{ session_id: "s1", slot: "0", exercise_id: "custom:kettlebell-halos", sets: 3, reps_min: 10, reps_max: 10, load_kg: "14.00", feel: "right", muscles: ["frontDelts", "core"], logged_at: new Date(now - 2 * DAY).toISOString() }];
+  const loaded = mapEntries([{ id: "s1", source: "manual", format: "sets", label: "Core and abs", started_at: new Date(now - 2 * DAY).toISOString() }], rowsDb);
+  ok(loaded[0].exerciseId === "kbhalo" && loaded[0].muscles.join() === "frontDelts,core", "an old halo log loads as the library halo, muscles as logged");
+  const profile = { age: 28, weight: 57, level: "intermediate", goal: "muscle", inventory: ["kettlebell"], customGear: [], excluded: [], sessionMinutes: 30, daysPerWeek: 3 };
+  const next = progressionFor(EXERCISES.find((e) => e.id === "kbhalo"), profile, loaded);
+  ok(!next.isFirst && next.load === 14 && next.reps[0] === 9, `…so the next halo prescription builds on it (14 kg, ${next.reps.join("-")} reps)`);
+  const stillCustom = parseWorkoutText("halos", [{ id: "custom:kettlebell-halos", name: "Kettlebell Halos", primary: "frontDelts", secondary: [] }]).rows[0];
+  ok(stillCustom.match.type === "library" && stillCustom.match.id === "kbhalo", "a saved custom halo no longer shadows the library halo");
 }
 
 console.log(failures ? `\n❌ ${failures} FAILURES` : "\n✅ logged workouts parse right and count everywhere but plan days");

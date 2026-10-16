@@ -7,25 +7,15 @@
 // weekly volume and it gets its own progress line.
 import { EXERCISES, MUSCLES } from "./data.js";
 
-/** Common moves the generator doesn't program, with the muscles they mostly train. */
+/** Common moves the library doesn't program, with the muscles they mostly train. */
 export const KNOWN_MOVES = [
-  { name: "Kettlebell Halo",          words: ["halo"],                         primary: "frontDelts", secondary: ["core", "triceps"] },
-  { name: "Kettlebell Swing",         words: ["swing"],                        primary: "glutes",     secondary: ["hamstrings", "core"] },
-  { name: "Push-Up Pass-Through",     words: ["pushup", "pass", "through"],    primary: "chest",      secondary: ["triceps", "core"] },
-  { name: "Renegade Row",             words: ["renegade", "row"],              primary: "lats",       secondary: ["core", "chest"] },
-  { name: "Windmill",                 words: ["windmill"],                     primary: "core",       secondary: ["frontDelts", "hamstrings"] },
-  { name: "Turkish Get-Up",           words: ["turkish", "getup"],             primary: "core",       secondary: ["frontDelts", "glutes"] },
-  { name: "Around the World",         words: ["around", "world"],              primary: "core",       secondary: ["frontDelts"] },
-  { name: "Figure 8",                 words: ["figure", "8"],                  primary: "core",       secondary: ["forearms", "glutes"] },
-  { name: "Kettlebell Clean",         words: ["clean"],                        primary: "glutes",     secondary: ["hamstrings", "traps"] },
-  { name: "Kettlebell Snatch",        words: ["snatch"],                       primary: "glutes",     secondary: ["frontDelts", "hamstrings"] },
-  { name: "High Pull",                words: ["high", "pull"],                 primary: "traps",      secondary: ["rearDelts"] },
-  { name: "Thruster",                 words: ["thruster"],                     primary: "quads",      secondary: ["frontDelts", "glutes"] },
   { name: "Bicycle Crunch",           words: ["bicycle", "crunch"],            primary: "abs",        secondary: ["core"] },
   { name: "Mountain Climber",         words: ["mountain", "climber"],          primary: "core",       secondary: ["abs"] },
   { name: "Burpee",                   words: ["burpee"],                       primary: "quads",      secondary: ["chest", "core"] },
   { name: "V-Up",                     words: ["vup"],                          primary: "abs",        secondary: ["core"] },
   { name: "Flutter Kicks",            words: ["flutter", "kick"],              primary: "abs",        secondary: ["core"] },
+  { name: "Crunch",                   words: ["crunch"],                       primary: "abs",        secondary: [] },
+  { name: "Jumping Jacks",            words: ["jumping", "jack"],              primary: "calves",     secondary: ["quads"] },
 ];
 
 // words that don't identify a movement
@@ -45,11 +35,50 @@ export function tokens(text) {
 
 export const slugOf = (name) => "custom:" + String(name).toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 
+/** Every name a library move answers to: its own, per-implement, and common aliases. */
+const namesOf = (e) => [e.name, ...Object.values(e.nameBy || {}), ...(e.aliases || [])];
+const keyOf = (name) => [...new Set(tokens(name))].sort().join(" ");
+
+// exact word-set → library id; a key two different moves share is ambiguous and dropped
+const LIBRARY_KEYS = (() => {
+  const m = new Map();
+  for (const e of EXERCISES) for (const n of namesOf(e)) {
+    const k = keyOf(n);
+    if (!k) continue;
+    m.set(k, m.has(k) && m.get(k) !== e.id ? null : e.id);
+  }
+  return m;
+})();
+
+/**
+ * A custom move that the library has since learned ("custom:kettlebell-halos"
+ * → "kbhalo"). History logged under the old id then feeds the library move's
+ * progression and chart. Only an exact match of the meaningful words counts.
+ */
+export function canonicalId(id, name) {
+  if (!String(id).startsWith("custom:")) return id;
+  const k = keyOf(name || String(id).slice(7).replace(/-/g, " "));
+  return LIBRARY_KEYS.get(k) || id;
+}
+
+// library names with "and"/"&" in them ("Clean and Press"), as forgiving patterns
+const AND_NAMES = (() => {
+  const out = new Map();
+  for (const e of EXERCISES) for (const n of namesOf(e)) {
+    const m = /\b(\w+)(?:\s+and\s+|\s*&\s*)(\w+)\b/i.exec(n);
+    if (!m) continue;
+    const k = `${m[1]}|${m[2]}`.toLowerCase();
+    if (!out.has(k)) out.set(k, new RegExp(`\\b${m[1]}s?(?:\\s+and\\s+|\\s*&\\s*)${m[2]}`, "gi"));
+  }
+  return [...out.values()];
+})();
+
 function candidates(customs) {
-  const lib = EXERCISES.flatMap((e) => [e.name, ...Object.values(e.nameBy || {})].map((n) => ({
+  const lib = EXERCISES.flatMap((e) => namesOf(e).map((n) => ({
     type: "library", id: e.id, name: n, primary: e.primary, secondary: e.secondary, timed: !!e.timed, loadable: !!e.loadable, words: tokens(n),
   })));
-  const mine = customs.map((c) => ({ type: "custom", id: c.id, name: c.name, primary: c.primary, secondary: c.secondary || [], timed: !!c.timed, loadable: true, words: tokens(c.name) }));
+  // a saved custom move that the library now has is just the library move
+  const mine = customs.filter((c) => canonicalId(c.id, c.name) === c.id).map((c) => ({ type: "custom", id: c.id, name: c.name, primary: c.primary, secondary: c.secondary || [], timed: !!c.timed, loadable: true, words: tokens(c.name) }));
   const known = KNOWN_MOVES.map((k) => ({ type: "known", id: slugOf(k.name), name: k.name, primary: k.primary, secondary: k.secondary, timed: false, loadable: true, words: k.words }));
   return [...mine, ...lib, ...known];
 }
@@ -112,6 +141,8 @@ export function parseWorkoutText(text, customs = []) {
   // a lead-in like "today I did these with a kettlebell:" isn't an exercise
   const colon = s.indexOf(":");
   if (colon >= 0 && !matchMove(readNumbers(s.slice(0, colon)).rest, customs)) s = s.slice(colon + 1);
+  // "clean and press" is one move, not two: shield names that contain "and"
+  for (const re of AND_NAMES) s = s.replace(re, (m) => m.replace(/\s*\band\b\s*/i, " & "));
   const parts = s.split(/[\n,;+•]|\band\b|\bthen\b/i).map((x) => x.trim()).filter(Boolean)
     .filter((x) => !PREAMBLE.test(x) || matchMove(x, customs));
   const rows = [];

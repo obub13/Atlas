@@ -286,7 +286,8 @@ ok(true, "signed out → sign-in screen");
 await page.getByPlaceholder("you@example.com").fill(EMAIL);
 await page.locator("input[type=password]").fill("wrong-password");
 await page.getByRole("button", { name: /^Sign in/ }).click();
-ok(await page.getByRole("alert").filter({ hasText: "don't match" }).isVisible(), "a wrong password is refused with a clear message");
+// the refusal comes back over the network: wait for it rather than looking once
+ok(await page.getByRole("alert").filter({ hasText: "don't match" }).waitFor({ timeout: 5000 }).then(() => true, () => false), "a wrong password is refused with a clear message");
 await page.locator("input[type=password]").fill(PASS);
 await page.getByRole("button", { name: /^Sign in/ }).click();
 await page.getByRole("button", { name: "Week", exact: true }).waitFor();
@@ -341,6 +342,30 @@ ok(await main(desk).getByTestId("progress-panel").isVisible(), "desktop: Progres
 await desk.screenshot({ path: "tests/shots/progress-desktop.png" }).catch(() => {});
 await desk.getByRole("button", { name: "Open profile" }).click();
 ok(await desk.getByRole("heading", { name: "Profile" }).isVisible(), "desktop: profile opens as a drawer");
+
+/* ── 11. the bells you own ─────────────────────────────────────────────────── */
+console.log("owned bells");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.getByRole("button", { name: "Open profile" }).click();
+const picker = main(page).getByTestId("weights-kettlebell");
+ok(await picker.isVisible(), "owning a kettlebell asks which bells");
+await picker.getByRole("button", { name: "6 kg kettlebell", exact: true }).click();
+await picker.getByRole("button", { name: "14 kg kettlebell", exact: true }).click();
+await until(async () => JSON.stringify((await db.profile(uid)).settings.weights?.kettlebell) === "[6,14]");
+ok(JSON.stringify((await db.profile(uid)).settings.weights?.kettlebell) === "[6,14]", "the bells are saved to the profile (6 and 14 kg)");
+await page.getByRole("button", { name: "Week", exact: true }).click();
+await main(page).getByTestId("week-day").first().click();
+await wait(300);
+const loads = await main(page).locator("article").evaluateAll((arts) => arts.map((a) => {
+  const t = a.innerText; const m = /(\d+(?:\.\d+)?) kg\s*(YOUR BELL|HEAVIEST|EACH|TOTAL)/i.exec(t); return m ? { kg: +m[1], label: m[2].toLowerCase() } : null;
+}).filter(Boolean));
+ok(loads.length > 0 && loads.every((l) => l.kg === 6 || l.kg === 14), `every weight asked for is a bell you own (${loads.map((l) => l.kg).join(", ")})`);
+const bellCard = main(page).locator("article").filter({ hasText: /your bell|heaviest/i }).first();
+const less = bellCard.getByRole("button", { name: /^Less weight/ }), more = bellCard.getByRole("button", { name: /^More weight/ });
+if (await less.isEnabled()) await less.click();
+ok(/\b6 kg/.test(await bellCard.innerText()) && await less.isDisabled(), "− goes to the 6 kg bell and stops there");
+await more.click();
+ok(/\b14 kg/.test(await bellCard.innerText()) && await more.isDisabled(), "+ goes straight to the 14 kg bell — nothing in between, nothing heavier");
 
 ok(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
 await browser.close();

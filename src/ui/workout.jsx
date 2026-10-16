@@ -19,6 +19,12 @@ function ExerciseCard({ ex, index, doneSets, onToggleSet, onLoad, onRest, feel, 
   const complete = doneSets.size === ex.sets;
   const target = ex.holdSecs ? `${ex.holdSecs}s hold` : `${ex.reps[0]}–${ex.reps[1]} reps`;
   const step = ex.loadUnit === "perHand" ? 2.5 : 5;
+  // with a fixed set of bells, +/- moves between the ones you own
+  const owned = ex.weights?.length ? ex.weights : null;
+  const lighter = owned ? [...owned].reverse().find((w) => w < (ex.load ?? Infinity)) : null;
+  const heavier = owned ? owned.find((w) => w > (ex.load ?? -Infinity)) : null;
+  const less = () => (owned ? lighter != null && onLoad(lighter - (ex.load || 0)) : onLoad(-step));
+  const more = () => (owned ? heavier != null && onLoad(heavier - (ex.load || 0)) : onLoad(step));
 
   return (
     <article className={cx("min-w-0 rounded-2xl border p-4 transition-colors",
@@ -53,14 +59,14 @@ function ExerciseCard({ ex, index, doneSets, onToggleSet, onLoad, onRest, feel, 
         )}
         {ex.loadable && (
           <div className="ml-auto flex items-center gap-1 rounded-xl bg-raised border border-line px-1 py-1">
-            <button onClick={() => onLoad(-step)} aria-label={`Less weight on ${ex.name}`}
-              className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-text hover:bg-line/50"><Minus size={14} /></button>
+            <button onClick={less} disabled={owned && lighter == null} aria-label={`Less weight on ${ex.name}`}
+              className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-text hover:bg-line/50 disabled:opacity-30"><Minus size={14} /></button>
             <span className="text-[13px] font-semibold text-text tabular-nums min-w-[70px] text-center">
               {ex.load != null ? `${ex.load} kg` : "—"}
-              <span className="block text-[9px] uppercase tracking-wider text-faint leading-none">{ex.loadUnit === "perHand" ? "each" : "total"}</span>
+              <span className="block text-[9px] uppercase tracking-wider text-faint leading-none">{owned && ex.atMax ? "heaviest" : owned && ex.implement === "kettlebell" ? "your bell" : ex.loadUnit === "perHand" ? "each" : "total"}</span>
             </span>
-            <button onClick={() => onLoad(step)} aria-label={`More weight on ${ex.name}`}
-              className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-text hover:bg-line/50"><Plus size={14} /></button>
+            <button onClick={more} disabled={owned && heavier == null} aria-label={`More weight on ${ex.name}`}
+              className="w-8 h-8 grid place-items-center rounded-lg text-mute hover:text-text hover:bg-line/50 disabled:opacity-30"><Plus size={14} /></button>
           </div>
         )}
       </div>

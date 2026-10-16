@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Check, Plus, X, Package, AlertTriangle, Sparkles } from "lucide-react";
 import { ITEMS, ITEM_GROUPS, EQUIP_PRESETS, EXERCISES, MUSCLES } from "../engine/data.js";
-import { available } from "../engine/generator.js";
+import { available, BELL_SIZES } from "../engine/generator.js";
 import { cx } from "./ui.jsx";
 
 const KITS = [
@@ -18,7 +18,40 @@ export function kitCoverage(inventory, customGear = []) {
   return { count: movements.length, gaps, inv };
 }
 
-export function GearList({ inventory, customGear, onChange, compact }) {
+const WEIGHT_ITEMS = {
+  kettlebell: { title: "Which bells do you have?", sizes: BELL_SIZES, hint: "Workouts only ask for bells you own. When you outgrow the heaviest, reps and tempo take over." },
+  dumbbells:  { title: "Which dumbbells do you have?", sizes: [1, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10, 12, 12.5, 14, 15, 16, 17.5, 20, 22.5, 25, 27.5, 30, 32.5, 35, 40], hint: "Pairs, kg each. Leave empty for adjustable dumbbells — any weight can be suggested." },
+};
+
+/** Tap the weights you own; the generator only prescribes those. */
+export function WeightPicker({ item, values = [], onChange }) {
+  const cfg = WEIGHT_ITEMS[item];
+  const [draft, setDraft] = useState("");
+  const set = new Set(values.map(Number));
+  const toggle = (w) => onChange([...(set.has(w) ? [...set].filter((x) => x !== w) : [...set, w])].sort((a, b) => a - b));
+  const sizes = [...new Set([...cfg.sizes, ...set])].sort((a, b) => a - b);
+  const add = () => { const w = +String(draft).replace(",", "."); if (w > 0 && w <= 200) { if (!set.has(w)) toggle(w); setDraft(""); } };
+  return (
+    <div className="rounded-xl border border-line bg-well p-3" data-testid={`weights-${item}`}>
+      <p className="text-[12px] font-semibold text-text">{cfg.title} <span className="font-normal text-faint">(kg)</span></p>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {sizes.map((w) => (
+          <button key={w} type="button" onClick={() => toggle(w)} aria-pressed={set.has(w)} aria-label={`${w} kg ${item}`}
+            className={cx("min-w-[40px] rounded-lg border px-2 py-1 text-[12px] font-semibold tabular-nums",
+              set.has(w) ? "border-ember bg-ember/15 text-emberSoft" : "border-line text-faint hover:text-mute")}>
+            {w}
+          </button>
+        ))}
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          inputMode="decimal" placeholder="other" aria-label={`Add another ${item} weight`}
+          className="w-16 rounded-lg bg-surface border border-line px-2 py-1 text-base sm:text-[12px] text-text placeholder:text-faint focus:outline-none focus:border-ember/60" />
+      </div>
+      <p className="text-[11px] text-faint mt-2">{set.size ? `You own: ${[...set].sort((a, b) => a - b).join(", ")} kg. ` : ""}{cfg.hint}</p>
+    </div>
+  );
+}
+
+export function GearList({ inventory, customGear, onChange, compact, weights = {} }) {
   const [draft, setDraft] = useState("");
   const [actsAs, setActsAs] = useState("");
   const owned = useMemo(() => new Set(inventory), [inventory]);
@@ -74,11 +107,19 @@ export function GearList({ inventory, customGear, onChange, compact }) {
                     <Check size={13} />
                   </span>
                   <span className={cx("text-sm", on ? "text-text font-medium" : "text-mute")}>{item.label}</span>
+                  {on && WEIGHT_ITEMS[item.id] && (weights[item.id] || []).length > 0 && (
+                    <span className="ml-auto text-[11px] text-faint tabular-nums">{weights[item.id].join(" · ")} kg</span>
+                  )}
                 </button>
               );
             })}
           </div>
         </div>
+      ))}
+
+      {Object.keys(WEIGHT_ITEMS).filter((id) => owned.has(id)).map((id) => (
+        <WeightPicker key={id} item={id} values={weights[id] || []}
+          onChange={(list) => onChange({ weights: { ...weights, [id]: list } })} />
       ))}
 
       <div>

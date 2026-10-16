@@ -28,7 +28,7 @@ import { planWeek, weekProgress } from "../engine/week.js";
 const DEFAULT_PROFILE = {
   age: 28, height: 175, weight: 75, level: null, goal: null, equipment: "bw",
   inventory: [...EQUIP_PRESETS.bw], customGear: [], skill: null, excluded: [],
-  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null, customExercises: [],
+  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null, customExercises: [], weights: {},
 };
 
 function normalize(p) {
@@ -36,6 +36,7 @@ function normalize(p) {
   if (!Array.isArray(out.inventory) || !out.inventory.length) out.inventory = [...(EQUIP_PRESETS[out.equipment] || EQUIP_PRESETS.min)];
   if (!Array.isArray(out.customGear)) out.customGear = [];
   if (!Array.isArray(out.excluded)) out.excluded = [];
+  if (!out.weights || typeof out.weights !== "object" || Array.isArray(out.weights)) out.weights = {};
   // custom moves the library has since learned (e.g. halos) stop being custom
   out.customExercises = (Array.isArray(out.customExercises) ? out.customExercises : []).filter((c) => c && canonicalId(c.id, c.name) === c.id);
   return out;
@@ -47,7 +48,7 @@ function signature(profile, selected) {
     muscles: [...selected].sort(), minutes: profile.sessionMinutes, level: profile.level, goal: profile.goal,
     skill: profile.skill || null, inventory: [...(profile.inventory || [])].sort(),
     custom: (profile.customGear || []).map((g) => g.actsAs).filter(Boolean).sort(),
-    age: profile.age, weight: profile.weight,
+    age: profile.age, weight: profile.weight, weights: profile.weights || {},
   });
 }
 

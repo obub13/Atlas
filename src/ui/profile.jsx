@@ -112,7 +112,7 @@ export function ProfilePanel({ profile, onChange, onReset, sessions, history = [
 
       <div className="rounded-2xl bg-surface border border-line p-4">
         <SectionTitle icon={Package} aside={<span className="text-xs text-faint">{kit.count} movements</span>}>Your gear</SectionTitle>
-        <GearList inventory={profile.inventory} customGear={profile.customGear} onChange={onChange} compact />
+        <GearList inventory={profile.inventory} customGear={profile.customGear} weights={profile.weights || {}} onChange={onChange} compact />
       </div>
 
       {profile.excluded.length > 0 && (

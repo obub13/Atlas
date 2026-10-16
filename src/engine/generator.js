@@ -118,6 +118,29 @@ export function restFor(ex, profile, restMult = 1) {
   return Math.round((secs * restMult) / 5) * 5;
 }
 
+/* ── the weights actually on the floor ─────────────────────────────────────── */
+// profile.weights = { kettlebell: [6, 14], dumbbells: [...] } — kg. An empty or
+// missing list means "unknown / adjustable": any weight can be suggested.
+/** Standard competition/cast-iron bell sizes, for "the next bell to buy". */
+export const BELL_SIZES = [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 44, 48];
+
+export function ownedWeights(profile, implement) {
+  const list = (profile?.weights || {})[implement];
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.map(Number).filter((n) => Number.isFinite(n) && n > 0 && n <= 200))].sort((a, b) => a - b);
+}
+/** The owned weight closest to kg (ties go to the lighter one). */
+export function nearestOwned(kg, owned) {
+  return owned.reduce((best, w) => (Math.abs(w - kg) < Math.abs(best - kg) ? w : best), owned[0]);
+}
+/** Next owned weight above (dir > 0) or below (dir < 0) kg, or null. */
+export function stepOwned(kg, owned, dir) {
+  return dir > 0 ? owned.find((w) => w > kg + 1e-9) ?? null : [...owned].reverse().find((w) => w < kg - 1e-9) ?? null;
+}
+export const nextBellToBuy = (owned) => BELL_SIZES.find((b) => b > (owned[owned.length - 1] || 0)) || null;
+// a step-up "with weight" uses whatever loading kit is owned — for a kettlebell-only kit, a bell
+const weightsFor = (ex, profile, inv) => ownedWeights(profile, ex.implement || implementFor(ex, inv) || LOADING_ITEMS.find((i) => inv.has(i)));
+
 export function suggestLoad(ex, profile, inv = inventoryOf(profile)) {
   if (!ex.loadFactor || !canLoad(ex, inv)) return null;
   const bw = +profile.weight || 75;
@@ -127,6 +150,8 @@ export function suggestLoad(ex, profile, inv = inventoryOf(profile)) {
   const perHandFactor = (ex.baseLoadUnit || ex.loadUnit) === "perHand";
   const single = ex.implement === "kettlebell";
   const raw = bw * ex.loadFactor * level.loadMult * (perHandFactor && single ? 1.5 : 1);
+  const owned = weightsFor(ex, profile, inv);
+  if (owned.length) return nearestOwned(raw, owned);
   const step = ex.loadUnit === "perHand" ? 2.5 : 5;
   return clamp(round(raw, step), step, bw * 2.5);
 }
@@ -148,6 +173,60 @@ const progressLog = (log) => log.filter((e) => e.feel && !(e.format === "circuit
 
 /* ── what to ask for this time, given what happened last time ─────────────── */
 export function progressionFor(ex, profile, allLog, inv = inventoryOf(profile)) {
+  const owned = canLoad(ex, inv) ? weightsFor(ex, profile, inv) : [];
+  const p = owned.length ? fixedWeightProgression(ex, profile, allLog, inv, owned) : openProgression(ex, profile, allLog, inv);
+  return owned.length ? { ...p, weights: owned } : p;
+}
+
+/**
+ * Progression when only certain weights exist (a 6 and a 14 kg bell). Load can
+ * only jump to the next weight owned, so reps carry more of the progress, and
+ * at the heaviest weight the levers become reps, then tempo — with a nudge
+ * toward the next bell instead of a target nobody can lift.
+ */
+function fixedWeightProgression(ex, profile, allLog, inv, owned) {
+  const open = openProgression(ex, profile, allLog, inv);
+  if (open.isFirst || ex.timed || !open.prev) return open.load != null ? { ...open, load: nearestOwned(open.load, owned) } : open;
+  const base = repsFor(ex, profile, inv);
+  const prev = open.prev;
+  const prevLoad = nearestOwned(prev.load ?? suggestLoad(ex, profile, inv), owned);
+  const prevTop = prev.reps ? prev.reps[1] : base.reps[1];
+  const heaviest = owned[owned.length - 1];
+  const up = stepOwned(prevLoad, owned, 1);
+  const down = stepOwned(prevLoad, owned, -1);
+  const buy = nextBellToBuy(owned);
+  const cap = base.reps[1] + 6;                  // past this, more reps stops building strength
+  const range = (top) => [Math.max(base.reps[0], top - (base.reps[1] - base.reps[0])), top];
+
+  if (open.deload) {
+    // dropping to the next bell down can halve the load; same bell, fewer reps is the gentler back-off
+    const softer = down && down >= prevLoad * 0.7 ? down : null;
+    return softer
+      ? { ...open, load: softer, reps: base.reps, note: `Two hard sessions in a row — ${softer}kg this time to let you catch up. Planned, not a setback.` }
+      : { ...open, load: prevLoad, reps: [Math.max(3, base.reps[0] - 2), Math.max(4, base.reps[0])], note: `Two hard sessions in a row — same ${prevLoad}kg, fewer reps this time. Planned, not a setback.` };
+  }
+  // a jump to the next bell is earned at the top of the range, and only if it isn't a leap
+  const canJump = up && up <= prevLoad * 1.5;
+  if (prev.feel === "easy" || prev.feel === "right") {
+    const topped = prevTop >= base.reps[1] + (prev.feel === "easy" ? 0 : 2);
+    if (topped && canJump) {
+      return { ...open, load: up, reps: base.reps, note: `You've topped out ${prevLoad}kg — move to the ${up}kg and drop back to ${base.reps[0]} reps.` };
+    }
+    if (prevTop >= cap) {
+      return { ...open, load: prevLoad, reps: range(cap), atMax: prevLoad === heaviest,
+        note: prevLoad === heaviest
+          ? `You've outgrown your heaviest bell for this. Keep ${cap} reps and slow every lowering to 3 seconds${buy ? ` — a ${buy}kg bell is your next step` : ""}.`
+          : `Hold ${cap} reps at ${prevLoad}kg with a 3-second lowering — the ${up}kg is too big a jump yet.` };
+    }
+    const add = prev.feel === "easy" ? 2 : 1;
+    const top = Math.min(cap, prevTop + add);
+    return { ...open, load: prevLoad, reps: range(top), atMax: prevLoad === heaviest && top > base.reps[1],
+      note: `Same ${prevLoad}kg, ${add} more rep${add > 1 ? "s" : ""} per set than last time${prevLoad === heaviest && top >= base.reps[1] ? " — it's your heaviest bell, so reps are the way up" : ""}.` };
+  }
+  return { ...open, load: prevLoad, reps: prev.reps || base.reps, note: `Repeat ${prevLoad}kg until it moves cleanly.` };
+}
+
+function openProgression(ex, profile, allLog, inv) {
   const log = progressLog(allLog);
   const base = repsFor(ex, profile, inv);
   const suggested = suggestLoad(ex, profile, inv);
@@ -302,6 +381,7 @@ export function replaceExercise(workout, index, alt, profile, log) {
     loadable: canLoad(alt, inv), loadUnit: alt.loadUnit || null,
     needsLabel: alt.needsLabel || needsLabel(alt, inv),
     coachNote: presc.note, isFirst: !!presc.isFirst, deload: !!presc.deload, prev: presc.prev || null,
+    weights: presc.weights || null, atMax: !!presc.atMax,
     // a circuit keeps its short between-move rest when a slot is swapped
     rest: workout.format === "circuit" ? old.rest : restFor(alt, profile, limits.restMult),
     swapped: true,
@@ -833,6 +913,8 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
     isFirst: !!p.presc.isFirst,
     deload: !!p.presc.deload,
     prev: p.presc.prev || null,
+    weights: p.presc.weights || null,
+    atMax: !!p.presc.atMax,
     rest: p.rest,
   }));
 

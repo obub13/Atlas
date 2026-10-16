@@ -109,7 +109,7 @@ export function Onboarding({ initial, onDone }) {
                 you haven&rsquo;t got, and tick the equipment you own. Routines are built from exactly
                 this list and nothing else.
               </p>
-              <GearList inventory={p.inventory} customGear={p.customGear}
+              <GearList inventory={p.inventory} customGear={p.customGear} weights={p.weights || {}}
                 onChange={(patch) => setP((prev) => ({ ...prev, ...patch }))} compact />
             </>
           )}

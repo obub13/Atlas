@@ -275,10 +275,31 @@ export function weekStart(now = Date.now()) {
 }
 
 /** Which plan days are done this week, and which one is up next. */
+/**
+ * Where you stand this week. The week is Monday–Sunday and resets on Monday,
+ * but the ORDER carries over: the next day is the one not done this week that
+ * you've gone longest without (never-trained days first, then plan order).
+ * So a split started on a Thursday picks up where it left off instead of
+ * sending you back to Day 1 every Monday.
+ */
 export function weekProgress(plan, log, now = Date.now()) {
   const since = weekStart(now);
-  const doneKeys = new Set(log.filter((e) => (e.source || "plan") === "plan" && e.at >= since && e.dayKey).map((e) => e.dayKey));
+  const lastWeek = since - 7 * 864e5;
+  const planEntries = log.filter((e) => (e.source || "plan") === "plan" && e.dayKey && e.at <= now);
+  const lastAt = new Map();
+  for (const e of planEntries) if (!lastAt.has(e.dayKey) || e.at > lastAt.get(e.dayKey)) lastAt.set(e.dayKey, e.at);
+  const doneKeys = new Set(planEntries.filter((e) => e.at >= since).map((e) => e.dayKey));
+  const prevKeys = new Set(planEntries.filter((e) => e.at >= lastWeek && e.at < since).map((e) => e.dayKey));
   const done = plan.days.map((d) => doneKeys.has(d.key));
-  const next = done.indexOf(false);
-  return { done, doneCount: done.filter(Boolean).length, next: next < 0 ? null : next, complete: plan.days.length > 0 && next < 0 };
+  const lastDone = plan.days.map((d) => lastAt.get(d.key) ?? null);
+  const order = plan.days.map((_, i) => i).filter((i) => !done[i])
+    .sort((a, b) => (lastDone[a] ?? -Infinity) - (lastDone[b] ?? -Infinity) || a - b);
+  const next = order.length ? order[0] : null;
+  return {
+    done, doneCount: done.filter(Boolean).length, next, order, lastDone,
+    complete: plan.days.length > 0 && next === null,
+    weekStart: since,
+    lastWeekCount: plan.days.filter((d) => prevKeys.has(d.key)).length,
+    nextReason: next == null ? null : lastDone[next] == null ? "not trained yet" : "longest since you trained it",
+  };
 }

@@ -197,6 +197,8 @@ const planSessions = (await db.sessions(uid)).filter((s) => s.source === "plan")
 ok(planSessions.length >= 4 && planSessions.every((s) => s.day_key), `every plan session is stored with its day (${planSessions.length})`);
 await page.getByRole("button", { name: "Week", exact: true }).click();
 ok(await main(page).getByText("3/3 done").isVisible(), "all three days logged → 3/3 done");
+ok(/runs Monday to Sunday/.test(await main(page).getByTestId("week-status").innerText()), "the Week tab says when the week resets");
+ok(await main(page).getByTestId("day-last").count() === 3, "each done day shows when it was done");
 
 /* ── 7. Progress tab ──────────────────────────────────────────────────────── */
 console.log("progress");

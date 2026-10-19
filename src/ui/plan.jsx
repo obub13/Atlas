@@ -18,6 +18,9 @@ export function dayName(at) {
   return diff === 0 ? "Today" : diff === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
+/** "today", "yesterday", "Thu 15 Oct" — for "Last done …". */
+const lastLabel = (at) => { const n = dayName(at); return n === "Today" || n === "Yesterday" ? n.toLowerCase() : n; };
+
 /* ── the split itself: one row per training day ───────────────────────────── */
 export function WeekDays({ weekPlan, progress, onPickDay, compact }) {
   return (
@@ -25,6 +28,7 @@ export function WeekDays({ weekPlan, progress, onPickDay, compact }) {
       {weekPlan.days.map((d, i) => {
         const done = progress?.done[i];
         const next = progress?.next === i;
+        const last = progress?.lastDone?.[i];
         const Row = onPickDay ? "button" : "div";
         return (
           <li key={d.key + i} className="min-w-0">
@@ -38,6 +42,9 @@ export function WeekDays({ weekPlan, progress, onPickDay, compact }) {
               <div className="min-w-0 flex-1">
                 <p className="font-display text-base font-semibold text-text leading-tight">{d.label}</p>
                 <p className="text-xs text-mute mt-0.5 truncate">{d.muscles.map((m) => MUSCLES[m].label).join(" · ")}</p>
+                {!compact && last && (
+                  <p className="text-[11px] text-faint mt-0.5" data-testid="day-last">{done ? "Done" : "Last done"} {lastLabel(last)}</p>
+                )}
               </div>
               {onPickDay ? (
                 <span className="text-[11px] uppercase tracking-wider text-emberSoft shrink-0">{done ? "Again" : next ? "Up next" : "Start"}</span>
@@ -191,6 +198,14 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
           </div>
           <span className="text-[13px] font-semibold text-text tabular-nums shrink-0">{sessionsDone}/{total} done</span>
         </div>
+        <p className="text-[12px] text-mute mt-2" data-testid="week-status">
+          {sessionsDone === 0 && progress.lastWeekCount > 0
+            ? <>New week since Monday — last week you did {progress.lastWeekCount} of {total}. </>
+            : <>This week runs Monday to Sunday. </>}
+          {progress.next != null && (
+            <>Up next: <span className="text-text font-semibold">{weekPlan.days[progress.next].label}</span> ({progress.nextReason}).</>
+          )}
+        </p>
         {extras > 0 && (
           <p className="text-[12px] text-sky mt-2 flex items-center gap-1.5" data-testid="extra-sessions">
             <Zap size={13} className="shrink-0" aria-hidden />
@@ -213,14 +228,14 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
       </section>
 
       <section>
-        <SectionTitle icon={History} aside={onLogWorkout && (
+        <SectionTitle icon={History} aside={onLogWorkout ? (
           <button onClick={onLogWorkout} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-mute hover:text-text hover:border-edge">
             <Plus size={13} /> Log a workout
           </button>
-        )}>Logged this week</SectionTitle>
+        ) : null}>Logged since Monday</SectionTitle>
         {recent.length > 0
           ? <ol className="grid gap-2">{recent.map((s) => <SessionRow key={s.id} s={s} onDelete={onDeleteSession} />)}</ol>
-          : <p className="text-[13px] text-mute">Nothing yet this week. Trained without the app? Log it so it counts.</p>}
+          : <p className="text-[13px] text-mute">Nothing yet since Monday. Trained without the app? Log it so it counts.</p>}
       </section>
 
       <section>

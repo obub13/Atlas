@@ -457,10 +457,10 @@ function App() {
   const workoutPanel = (
     <WorkoutPanel workout={workout} done={done} feels={feels} stale={stale} {...sessionProps("plan")}
       onRegenerate={() => generate(undefined, { jump: false, variant: stale ? 0 : (workout?.variant || 0) + 1 })}
-      nextDay={(() => { const n = weekPlan.days.findIndex((d, i) => !progress.done[i] && d.key !== workout?.dayKey); return n >= 0 ? weekPlan.days[n] : null; })()}
+      nextDay={(() => { const n = progress.order.find((i) => weekPlan.days[i].key !== workout?.dayKey); return n != null ? weekPlan.days[n] : null; })()}
       onNewSelection={() => {
-        const n = weekPlan.days.findIndex((d, i) => !progress.done[i] && d.key !== workout?.dayKey);
-        if (n >= 0) generate(n, { jump: true });
+        const n = progress.order.find((i) => weekPlan.days[i].key !== workout?.dayKey);
+        if (n != null) generate(n, { jump: true });
         else { setWorkout(null); setDone(new Set()); setFeels({}); setTab("plan"); }
       }}
       onRepeat={() => { setDone(new Set()); setRest(null); }}
@@ -502,7 +502,7 @@ function App() {
   const planPanel = (
     <PlanPanel profile={profile} readout={readout} staleness={staleness} blockInfo={blockInfo}
       sessionsDone={progress.doneCount} weekPlan={weekPlan} progress={progress} quickVolume={quickVolume}
-      recent={history.filter((h) => h.at >= Date.now() - 7 * 864e5)}
+      recent={history.filter((h) => h.at >= progress.weekStart)}
       onPickDay={(i) => generate(i, { jump: true })}
       onLogWorkout={openLog} onDeleteSession={deleteSession}
       skillSlot={<SkillLadder skillId={profile.skill} inv={inv} log={log} />} />

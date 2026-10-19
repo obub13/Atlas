@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { CalendarDays, TrendingUp, AlertTriangle, Check, Flame, Clock, Zap, History, Layers, ChevronRight, PenLine, Trash2, Plus } from "lucide-react";
 import { MUSCLES, WEEKLY } from "../engine/data.js";
 import { cx, SectionTitle } from "./ui.jsx";
+import { WEEKDAY_NAMES } from "../engine/calendar.js";
 
 const TONE = {
   high:    { cls: "text-amberGold", bar: "bg-amberGold", note: "above the useful range" },
@@ -177,7 +178,8 @@ export function SessionRow({ s, onDelete }) {
   );
 }
 
-export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone, onPickDay, skillSlot, weekPlan, progress, quickVolume = {}, recent = [], onLogWorkout, onDeleteSession }) {
+export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone, onPickDay, skillSlot, weekPlan, progress, quickVolume = {}, recent = [], onLogWorkout, onDeleteSession, cal }) {
+  const first = WEEKDAY_NAMES[cal?.weekStartsOn ?? 1], last = WEEKDAY_NAMES[((cal?.weekStartsOn ?? 1) + 6) % 7];
   const extras = recent.filter((r) => r.source === "quick" || r.source === "manual").length;
   const total = weekPlan.days.length || profile.daysPerWeek;
 
@@ -200,8 +202,8 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
         </div>
         <p className="text-[12px] text-mute mt-2" data-testid="week-status">
           {sessionsDone === 0 && progress.lastWeekCount > 0
-            ? <>New week since Monday — last week you did {progress.lastWeekCount} of {total}. </>
-            : <>This week runs Monday to Sunday. </>}
+            ? <>New week since {first} — last week you did {progress.lastWeekCount} of {total}. </>
+            : <>This week runs {first} to {last}. </>}
           {progress.next != null && (
             <>Up next: <span className="text-text font-semibold">{weekPlan.days[progress.next].label}</span> ({progress.nextReason}).</>
           )}
@@ -232,10 +234,10 @@ export function PlanPanel({ profile, readout, staleness, blockInfo, sessionsDone
           <button onClick={onLogWorkout} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-mute hover:text-text hover:border-edge">
             <Plus size={13} /> Log a workout
           </button>
-        ) : null}>Logged since Monday</SectionTitle>
+        ) : null}>Logged since {first}</SectionTitle>
         {recent.length > 0
           ? <ol className="grid gap-2">{recent.map((s) => <SessionRow key={s.id} s={s} onDelete={onDeleteSession} />)}</ol>
-          : <p className="text-[13px] text-mute">Nothing yet since Monday. Trained without the app? Log it so it counts.</p>}
+          : <p className="text-[13px] text-mute">Nothing yet since {first}. Trained without the app? Log it so it counts.</p>}
       </section>
 
       <section>

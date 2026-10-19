@@ -10,7 +10,7 @@ const ms = (s) => (s ? Date.parse(s) : Date.now());
 
 /* ── profile ───────────────────────────────────────────────────────────────── */
 const SETTINGS_KEYS = ["age", "height", "weight", "level", "goal", "equipment", "inventory", "customGear",
-  "skill", "excluded", "sessionMinutes", "daysPerWeek", "quickPrefs", "customExercises", "weights"];
+  "skill", "excluded", "sessionMinutes", "daysPerWeek", "quickPrefs", "customExercises", "weights", "timeZone", "weekStartsOn"];
 
 export function profileFromRow(row) {
   if (!row) return null;

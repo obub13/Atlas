@@ -6,6 +6,7 @@ import { SectionTitle, Chip } from "./ui.jsx";
 import { SessionRow } from "./plan.jsx";
 import { NumField } from "./onboarding.jsx";
 import { GearList, kitCoverage } from "./equipment.jsx";
+import { calendarOf, deviceCalendar, WEEKDAY_NAMES } from "../engine/calendar.js";
 
 function Choice({ label, options, value, onChange, render }) {
   return (
@@ -16,6 +17,27 @@ function Choice({ label, options, value, onChange, render }) {
           <Chip key={k} active={String(value) === String(k)} onClick={() => onChange(k)}>{render ? render(k, v) : v.label}</Chip>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** When your week turns over, and in which time zone — the same on every device. */
+function WeekSettings({ profile, onChange }) {
+  const cal = calendarOf(profile);
+  const here = deviceCalendar().timeZone;
+  const opts = { 0: { label: "Sunday" }, 1: { label: "Monday" }, 6: { label: "Saturday" } };
+  return (
+    <div data-testid="week-settings">
+      <Choice label="Week starts on" options={opts} value={cal.weekStartsOn} onChange={(v) => onChange({ weekStartsOn: +v })} />
+      <p className="text-xs text-faint mt-2">
+        Weeks run {WEEKDAY_NAMES[cal.weekStartsOn]}–{WEEKDAY_NAMES[(cal.weekStartsOn + 6) % 7]} in{" "}
+        <span className="text-mute font-semibold" data-testid="time-zone">{cal.timeZone.replace(/_/g, " ")}</span> time, whichever device you open the app on.
+        {here !== cal.timeZone && (
+          <> This device is on {here.replace(/_/g, " ")}.{" "}
+            <button onClick={() => onChange({ timeZone: here })} className="font-semibold text-emberSoft hover:underline">Switch to it</button>
+            {" "}(travelling for a while?)</>
+        )}
+      </p>
     </div>
   );
 }
@@ -107,6 +129,7 @@ export function ProfilePanel({ profile, onChange, onReset, sessions, history = [
         <Choice label="Primary goal" options={GOALS} value={profile.goal} onChange={(v) => onChange({ goal: v })} />
         <Choice label="Minutes per session" options={minuteOpts} value={profile.sessionMinutes} onChange={(v) => onChange({ sessionMinutes: +v })} />
         <Choice label="Days per week" options={dayOpts} value={profile.daysPerWeek} onChange={(v) => onChange({ daysPerWeek: +v })} />
+        <WeekSettings profile={profile} onChange={onChange} />
         <p className="text-xs text-faint">Changes apply the next time you build a routine.</p>
       </div>
 

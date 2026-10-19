@@ -24,6 +24,7 @@ import { QuickPanel } from "./quickui.jsx";
 import { LogWorkoutPanel, localDate } from "./logui.jsx";
 import { entriesFromRows, canonicalId } from "../engine/logparse.js";
 import { planWeek, weekProgress } from "../engine/week.js";
+import { calendarOf, deviceCalendar, validZone, instantOf } from "../engine/calendar.js";
 
 const DEFAULT_PROFILE = {
   age: 28, height: 175, weight: 75, level: null, goal: null, equipment: "bw",
@@ -37,6 +38,10 @@ function normalize(p) {
   if (!Array.isArray(out.customGear)) out.customGear = [];
   if (!Array.isArray(out.excluded)) out.excluded = [];
   if (!out.weights || typeof out.weights !== "object" || Array.isArray(out.weights)) out.weights = {};
+  // the person's calendar: pinned to the zone/first weekday of the device they set up on
+  const dev = deviceCalendar();
+  if (!validZone(out.timeZone)) out.timeZone = dev.timeZone;
+  if (![0, 1, 6].includes(out.weekStartsOn)) out.weekStartsOn = dev.weekStartsOn;
   // custom moves the library has since learned (e.g. halos) stop being custom
   out.customExercises = (Array.isArray(out.customExercises) ? out.customExercises : []).filter((c) => c && canonicalId(c.id, c.name) === c.id);
   return out;
@@ -215,7 +220,8 @@ function App() {
     const focus = settledSel.size ? settledSel : new Set(Object.keys(MUSCLES));
     return { ...planWeek(profile, focus, planLog(logRef.current)), wholeBody: settledSel.size === 0 };
   }, [weekSig]); // eslint-disable-line react-hooks/exhaustive-deps
-  const progress = useMemo(() => weekProgress(weekPlan, log), [weekPlan, log]);
+  const cal = useMemo(() => calendarOf(profile), [profile.timeZone, profile.weekStartsOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const progress = useMemo(() => weekProgress(weekPlan, log, Date.now(), cal), [weekPlan, log, cal]);
   const staleness = useMemo(() => {
     const days = {};
     for (const m of Object.keys(MUSCLES)) days[m] = daysSince(m, log);
@@ -392,7 +398,8 @@ function App() {
   /* ── a workout done without the app ─────────────────────────────────────── */
   const saveManual = ({ date, title, rows }) => {
     // today → now; an earlier day → midday, so it lands on that date in every chart
-    const at = date === localDate() ? Date.now() : new Date(`${date}T12:00:00`).getTime();
+    const [y, m, d] = date.split("-").map(Number);
+    const at = date === localDate(Date.now(), cal) ? Date.now() : instantOf(y, m, d, 12, 0, cal.timeZone);
     const customs = profile.customExercises || [];
     const { entries, newCustoms } = entriesFromRows(rows, { sessionId: newSessionId(), at, label: title || "Logged workout", customs });
     updateLog((prev) => entries.reduce((l, e) => upsertEntry(l, e), prev));
@@ -504,7 +511,7 @@ function App() {
       sessionsDone={progress.doneCount} weekPlan={weekPlan} progress={progress} quickVolume={quickVolume}
       recent={history.filter((h) => h.at >= progress.weekStart)}
       onPickDay={(i) => generate(i, { jump: true })}
-      onLogWorkout={openLog} onDeleteSession={deleteSession}
+      onLogWorkout={openLog} onDeleteSession={deleteSession} cal={cal}
       skillSlot={<SkillLadder skillId={profile.skill} inv={inv} log={log} />} />
   );
 
@@ -526,9 +533,9 @@ function App() {
     if (window.matchMedia && window.matchMedia("(min-width: 768px)").matches) setDrawer(true);
     else setTab("profile");
   };
-  const progressPanel = <ProgressPanel log={log} profile={profile} onLogWorkout={openLog} />;
+  const progressPanel = <ProgressPanel log={log} profile={profile} onLogWorkout={openLog} cal={cal} />;
   const logPanel = (
-    <LogWorkoutPanel profile={profile} onSave={saveManual}
+    <LogWorkoutPanel profile={profile} onSave={saveManual} cal={cal}
       onBack={() => setTab(logReturn || "plan")} onViewProgress={() => setTab("progress")} />
   );
 

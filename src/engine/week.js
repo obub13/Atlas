@@ -7,6 +7,7 @@
 //
 // The search is exhaustive and deterministic: every sequence of day types
 // (6 types, up to 6 days → 46,656 candidates) is scored, the best one wins.
+import { weekStartIn, addDays, fallbackCalendar } from "./calendar.js";
 import { MUSCLES } from "./data.js";
 import { buildWorkout, dayCapacity } from "./generator.js";
 
@@ -265,26 +266,22 @@ export function weekCoverage(profile, plan, log = []) {
   return { status, noGear: [...noGear], missing };
 }
 
-/** Monday 00:00 of the current week, local time. */
-export function weekStart(now = Date.now()) {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  const dow = (d.getDay() + 6) % 7; // Mon=0
-  d.setDate(d.getDate() - dow);
-  return d.getTime();
+/** Midnight that starts the current week, in the user's calendar (zone + first weekday). */
+export function weekStart(now = Date.now(), cal = fallbackCalendar()) {
+  return weekStartIn(now, cal);
 }
 
-/** Which plan days are done this week, and which one is up next. */
 /**
- * Where you stand this week. The week is Monday–Sunday and resets on Monday,
+ * Where you stand this week. The week starts on the user's first weekday
+ * (Sunday in Israel, Monday in most of Europe) in their home time zone,
  * but the ORDER carries over: the next day is the one not done this week that
  * you've gone longest without (never-trained days first, then plan order).
  * So a split started on a Thursday picks up where it left off instead of
- * sending you back to Day 1 every Monday.
+ * sending you back to Day 1 when the week turns over.
  */
-export function weekProgress(plan, log, now = Date.now()) {
-  const since = weekStart(now);
-  const lastWeek = since - 7 * 864e5;
+export function weekProgress(plan, log, now = Date.now(), cal = fallbackCalendar()) {
+  const since = weekStart(now, cal);
+  const lastWeek = addDays(since, -7, cal);
   const planEntries = log.filter((e) => (e.source || "plan") === "plan" && e.dayKey && e.at <= now);
   const lastAt = new Map();
   for (const e of planEntries) if (!lastAt.has(e.dayKey) || e.at > lastAt.get(e.dayKey)) lastAt.set(e.dayKey, e.at);

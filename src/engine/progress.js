@@ -3,10 +3,9 @@
 // here is stored; the database holds only what was logged.
 import { MUSCLES, EXERCISES } from "./data.js";
 import { SKILLS } from "./skills.js";
-import { weekStart } from "./week.js";
+import { weekStartIn, addDays, dateKey, weeksBetween, zoned, fallbackCalendar } from "./calendar.js";
 
 const DAY = 864e5;
-const WEEK = 7 * DAY;
 const sessionKey = (e) => e.sessionId || `${new Date(e.at).toDateString()}|${e.source || "plan"}`;
 /** Library name, then a saved custom move's name, then a readable version of the id. */
 export function nameOf(id, customs = []) {
@@ -33,7 +32,7 @@ export function niceTicks(lo, hi, count = 3) {
 }
 
 /** Headline numbers. */
-export function summary(log, now = Date.now()) {
+export function summary(log, now = Date.now(), cal = fallbackCalendar()) {
   const sessions = new Map();
   for (const e of log) {
     const k = sessionKey(e);
@@ -41,11 +40,11 @@ export function summary(log, now = Date.now()) {
     else sessions.get(k).at = Math.min(sessions.get(k).at, e.at);
   }
   const all = [...sessions.values()];
-  const ws = weekStart(now);
+  const ws = weekStartIn(now, cal);
   const thisWeek = all.filter((s) => s.at >= ws);
   // streak: consecutive weeks with at least one session, counting back from
   // this week (an empty week so far doesn't break it — it isn't over yet)
-  const weeksWith = new Set(all.map((s) => Math.floor((weekStart(s.at) - ws) / WEEK)));
+  const weeksWith = new Set(all.map((s) => weeksBetween(now, s.at, cal)));
   let streak = 0, w = weeksWith.has(0) ? 0 : -1;
   while (weeksWith.has(w)) { streak++; w--; }
   const since30 = now - 30 * DAY;
@@ -104,18 +103,19 @@ export function liftSeries(log, exerciseId, customs = []) {
   return { id: exerciseId, name: nameOf(exerciseId, customs), metric, unit, points, change };
 }
 
-/** Day grid for the last `weeks` weeks, Monday-first columns. */
-export function calendar(log, weeks = 12, now = Date.now()) {
-  const start = weekStart(now) - (weeks - 1) * WEEK;
+/** Day grid for the last `weeks` weeks; each column starts on the user's first weekday. */
+export function calendar(log, weeks = 12, now = Date.now(), cal = fallbackCalendar()) {
+  const start = addDays(weekStartIn(now, cal), -7 * (weeks - 1), cal);
   const days = [];
   for (let i = 0; i < weeks * 7; i++) {
-    const d = new Date(start); d.setDate(d.getDate() + i); d.setHours(0, 0, 0, 0);
-    days.push({ date: d.getTime(), plan: 0, quick: 0, sets: 0, labels: new Set(), future: d.getTime() > now });
+    const t = addDays(start, i, cal);
+    const z = zoned(t, cal.timeZone);
+    days.push({ date: t, key: dateKey(t, cal), dom: z.d, wd: z.wd, plan: 0, quick: 0, sets: 0, labels: new Set(), future: t > now });
   }
-  const index = new Map(days.map((d, i) => [new Date(d.date).toDateString(), i]));
+  const index = new Map(days.map((d, i) => [d.key, i]));
   const seen = new Set();
   for (const e of log) {
-    const i = index.get(new Date(e.at).toDateString());
+    const i = index.get(dateKey(e.at, cal));
     if (i == null) continue;
     const d = days[i];
     d.sets += e.sets || 0;
@@ -123,15 +123,15 @@ export function calendar(log, weeks = 12, now = Date.now()) {
     if (!seen.has(k)) { seen.add(k); if (offPlan(e.source)) d.quick++; else d.plan++; }
     if (e.label) d.labels.add(e.label);
   }
-  return { start, weeks, days: days.map((d) => ({ ...d, labels: [...d.labels] })) };
+  return { start, weeks, weekStartsOn: cal.weekStartsOn, timeZone: cal.timeZone, days: days.map((d) => ({ ...d, labels: [...d.labels] })) };
 }
 
 /** Sets per muscle per week (direct + half for secondaries), oldest week first. */
-export function weeklyVolumeSeries(log, weeks = 8, now = Date.now()) {
-  const ws = weekStart(now);
-  const cols = Array.from({ length: weeks }, (_, i) => ({ start: ws - (weeks - 1 - i) * WEEK, muscles: {} }));
+export function weeklyVolumeSeries(log, weeks = 8, now = Date.now(), cal = fallbackCalendar()) {
+  const ws = weekStartIn(now, cal);
+  const cols = Array.from({ length: weeks }, (_, i) => ({ start: addDays(ws, -7 * (weeks - 1 - i), cal), muscles: {} }));
   for (const e of log) {
-    const w = Math.floor((weekStart(e.at) - cols[0].start) / WEEK);
+    const w = weeks - 1 + weeksBetween(now, e.at, cal);
     if (w < 0 || w >= weeks) continue;
     const [primary, ...secondary] = e.muscles || [];
     const m = cols[w].muscles;

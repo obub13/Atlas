@@ -36,6 +36,8 @@ tests/        engine suites, schema/RLS on real Postgres, data layer, end-to-end
 
 **Data model.** `profiles` (one row per user: settings as jsonb), `workout_sessions` (one per workout), `exercise_logs` (one per exercise in a session, primary key `(session_id, slot)`). The log is the source of truth; volume, progression and charts are derived from it, never stored.
 
+**Whose calendar.** Timestamps are stored as instants (`timestamptz`), so the device that uploads a workout doesn't matter. What can differ is how an instant is read: which day, which week. That's a property of the person, not the device, so the profile keeps a home time zone and a first weekday (Sunday in Israel), and every day/week boundary goes through `src/engine/calendar.js` with those two values.
+
 **Why ids come from the device.** Sessions get a `crypto.randomUUID()` on the phone and every write is an upsert on a key the phone already knows. A write that times out can be retried any number of times, and re-rating an exercise overwrites its row, so neither can create a duplicate.
 
 **Security.** Row-level security on every table: you read and write only rows whose `user_id` is yours. A log row must also belong to one of *your* sessions, because foreign keys are checked without RLS. The anon key is public by design, and the setup screen refuses the `service_role` key.
@@ -85,6 +87,7 @@ npm test     # builds, then runs every suite; set CHROMIUM_PATH if Playwright ne
 | `logparsetest` | Free-text logging ("3x10 all: …"), library/custom/known matching, back-dating, and that logged workouts count in volume and progression but never tick a plan day |
 | `weightstest` | With 6 + 14 kg bells, 2,700+ prescriptions across goals, levels, plan days and single sessions only ever ask for 6 or 14 kg; reps → next bell → tempo progression; deloads on a fixed bell |
 | `weektest` | 720 weekly plans: every pick placed, full coverage when there's time, frequency, recovery spacing |
+| `calendartest` | Day and week boundaries are read in the person's home zone and first weekday: a 01:30 Sunday workout in Israel lands in that Sunday's week on devices set to UTC, Auckland, Los Angeles or Jerusalem; DST weeks still start at midnight |
 | `progresstest` | Progress maths and skill pacing, against hand-built logs with known answers |
 | `schematest` | The real migration on real Postgres (PGlite): owner-only RLS, cross-user writes refused, idempotent upserts, cascades |
 | `repotest` | The data layer over HTTP with supabase-js: round-trips, offline outbox surviving a "closed tab", a rejected row not blocking the queue, more than 1,000 rows |

@@ -197,7 +197,7 @@ const planSessions = (await db.sessions(uid)).filter((s) => s.source === "plan")
 ok(planSessions.length >= 4 && planSessions.every((s) => s.day_key), `every plan session is stored with its day (${planSessions.length})`);
 await page.getByRole("button", { name: "Week", exact: true }).click();
 ok(await main(page).getByText("3/3 done").isVisible(), "all three days logged → 3/3 done");
-ok(/runs Monday to Sunday/.test(await main(page).getByTestId("week-status").innerText()), "the Week tab says when the week resets");
+ok(/This week runs (Sunday to Saturday|Monday to Sunday)/.test(await main(page).getByTestId("week-status").innerText()), "the Week tab says when the week resets");
 ok(await main(page).getByTestId("day-last").count() === 3, "each done day shows when it was done");
 
 /* ── 7. Progress tab ──────────────────────────────────────────────────────── */
@@ -368,6 +368,19 @@ if (await less.isEnabled()) await less.click();
 ok(/\b6 kg/.test(await bellCard.innerText()) && await less.isDisabled(), "− goes to the 6 kg bell and stops there");
 await more.click();
 ok(/\b14 kg/.test(await bellCard.innerText()) && await more.isDisabled(), "+ goes straight to the 14 kg bell — nothing in between, nothing heavier");
+
+/* ── 12. the week starts on your day, in your zone ────────────────────────── */
+console.log("week start");
+await page.getByRole("button", { name: "Open profile" }).click();
+const ws = main(page).getByTestId("week-settings");
+for (const [day, n, text] of [["Monday", 1, "Monday to Sunday"], ["Sunday", 0, "Sunday to Saturday"]]) {
+  await ws.getByRole("button", { name: day, exact: true }).click();
+  await until(async () => (await db.profile(uid)).settings.weekStartsOn === n);
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  ok((await db.profile(uid)).settings.weekStartsOn === n && new RegExp(text).test(await main(page).getByTestId("week-status").innerText()), `week starts on ${day}: saved, and the Week tab says "${text}"`);
+  await page.getByRole("button", { name: "Open profile" }).click();
+}
+ok(!!(await db.profile(uid)).settings.timeZone, `the home time zone is saved with the profile (${(await db.profile(uid)).settings.timeZone})`);
 
 ok(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
 await browser.close();

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { LineChart, CalendarDays, BarChart3, Target, Table2, TrendingUp, TrendingDown, Minus, Flame, Check, PenLine } from "lucide-react";
 import { MUSCLES, WEEKLY } from "../engine/data.js";
 import { summary, exercisesLogged, liftSeries, calendar, weeklyVolumeSeries, skillTimeline, niceTicks } from "../engine/progress.js";
@@ -25,8 +25,16 @@ const C = {
   ],
 };
 
-const fmtDay = (t) => new Date(t).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-const fmtShort = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+// dates read in the user's home zone (their profile), not whatever zone this device is in
+const TimeZone = createContext(undefined);
+function useFmt() {
+  const timeZone = useContext(TimeZone);
+  return useMemo(() => ({
+    day: (t) => new Date(t).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone }),
+    short: (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone }),
+    month: (t) => new Date(t).toLocaleDateString(undefined, { month: "short", timeZone }),
+  }), [timeZone]);
+}
 
 function useWidth() {
   const ref = useRef(null);
@@ -85,6 +93,7 @@ function Stats({ s }) {
 
 /* ── one lift over time ──────────────────────────────────────────────────── */
 function LiftChart({ series }) {
+  const fmt = useFmt();
   const [ref, width] = useWidth();
   const [hover, setHover] = useState(null);
   const pts = series.points;
@@ -110,7 +119,7 @@ function LiftChart({ series }) {
   const unit = series.unit;
   return (
     <div ref={ref} className="relative" data-testid="lift-chart">
-      <svg width={width} height={H} role="img" aria-label={`${series.name}: ${pts.map((p) => `${fmtShort(p.at)} ${p.value} ${unit}`).join(", ")}`}>
+      <svg width={width} height={H} role="img" aria-label={`${series.name}: ${pts.map((p) => `${fmt.short(p.at)} ${p.value} ${unit}`).join(", ")}`}>
         {ticks.map((v, i) => (
           <g key={i}>
             <line x1={m.l} x2={width - m.r} y1={y(v)} y2={y(v)} stroke={C.grid} strokeWidth="1" />
@@ -118,8 +127,8 @@ function LiftChart({ series }) {
           </g>
         ))}
         <line x1={m.l} x2={width - m.r} y1={m.t + ih} y2={m.t + ih} stroke={C.axis} strokeWidth="1" />
-        <text x={m.l} y={H - 6} fontSize="11" fill={C.ink2}>{fmtShort(t0)}</text>
-        {pts.length > 1 && <text x={width - m.r} y={H - 6} fontSize="11" fill={C.ink2} textAnchor="end">{fmtShort(t1)}</text>}
+        <text x={m.l} y={H - 6} fontSize="11" fill={C.ink2}>{fmt.short(t0)}</text>
+        {pts.length > 1 && <text x={width - m.r} y={H - 6} fontSize="11" fill={C.ink2} textAnchor="end">{fmt.short(t1)}</text>}
         {h && <line x1={x(h.at)} x2={x(h.at)} y1={m.t} y2={m.t + ih} stroke={C.axis} strokeWidth="1" strokeDasharray="3 3" />}
         <path d={path} fill="none" stroke={C.line} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((p, i) => (
@@ -134,7 +143,7 @@ function LiftChart({ series }) {
       </svg>
       {h && (
         <Tip x={x(h.at)} y={y(h.value)} w={width}>
-          <span className="block text-mute">{fmtDay(h.at)} · {h.source === "quick" ? "single session" : h.source === "manual" ? "logged workout" : "plan"}</span>
+          <span className="block text-mute">{fmt.day(h.at)} · {h.source === "quick" ? "single session" : h.source === "manual" ? "logged workout" : "plan"}</span>
           <span className="block font-semibold">
             {h.value} {unit}
             <span className="font-normal text-mute"> · {h.sets} × {h.holdSecs ? `${h.holdSecs}s` : h.reps ? `${h.reps[0]}–${h.reps[1]}` : ""}{h.feel ? ` · felt ${h.feel}` : ""}</span>
@@ -146,6 +155,7 @@ function LiftChart({ series }) {
 }
 
 function LiftCard({ log, customs = [] }) {
+  const fmt = useFmt();
   const list = useMemo(() => exercisesLogged(log, customs), [log, customs]);
   const [pick, setPick] = useState(null);
   const [table, setTable] = useState(false);
@@ -179,7 +189,7 @@ function LiftCard({ log, customs = [] }) {
               {ch.delta === 0 && series.metric === "load" && ch.fromReps && ch.toReps && ch.fromReps[1] !== ch.toReps[1]
                 ? <> held while reps climbed <span className="text-text font-semibold">{ch.fromReps[0]}–{ch.fromReps[1]} → {ch.toReps[0]}–{ch.toReps[1]}</span></>
                 : ch.delta === 0 ? " — holding steady" : null}
-              {" "}since {fmtShort(ch.since)}{ch.pct != null && ch.delta !== 0 ? ` (${ch.delta > 0 ? "+" : ""}${ch.pct}%)` : ""}
+              {" "}since {fmt.short(ch.since)}{ch.pct != null && ch.delta !== 0 ? ` (${ch.delta > 0 ? "+" : ""}${ch.pct}%)` : ""}
             </span>
           : <span>{what}: <span className="text-text font-semibold">{series.points[0]?.value} {series.unit}</span> — log it again to see a trend.</span>}
       </p>
@@ -189,7 +199,7 @@ function LiftCard({ log, customs = [] }) {
             <thead><tr className="text-faint text-left"><th className="font-semibold py-1">Date</th><th className="font-semibold">{what}</th><th className="font-semibold">Sets</th><th className="font-semibold">Felt</th></tr></thead>
             <tbody>
               {[...series.points].reverse().map((p, i) => (
-                <tr key={i} className="border-t border-line text-text"><td className="py-1.5">{fmtDay(p.at)}</td><td className="tabular-nums">{p.value} {series.unit}</td><td className="tabular-nums">{p.sets}</td><td className="text-mute">{p.feel || "—"}</td></tr>
+                <tr key={i} className="border-t border-line text-text"><td className="py-1.5">{fmt.day(p.at)}</td><td className="tabular-nums">{p.value} {series.unit}</td><td className="tabular-nums">{p.sets}</td><td className="text-mute">{p.feel || "—"}</td></tr>
               ))}
             </tbody>
           </table>
@@ -200,11 +210,12 @@ function LiftCard({ log, customs = [] }) {
 }
 
 /* ── training calendar ───────────────────────────────────────────────────── */
-function CalendarCard({ log }) {
+function CalendarCard({ log, calSettings }) {
+  const fmt = useFmt();
   const [ref, width] = useWidth();
   const [hover, setHover] = useState(null);
   const weeks = Math.max(8, Math.min(26, Math.floor((width - 22) / 23)));
-  const cal = useMemo(() => calendar(log, weeks), [log, weeks]);
+  const cal = useMemo(() => calendar(log, weeks, Date.now(), calSettings), [log, weeks, calSettings]);
   const left = 22, top = 16, gap = 3;
   const cell = Math.max(10, Math.min(20, Math.floor((width - left) / weeks) - gap));
   const H = top + 7 * (cell + gap);
@@ -213,11 +224,10 @@ function CalendarCard({ log }) {
   cal.days.forEach((d, i) => {
     const col = Math.floor(i / 7);
     if (i % 7 === 0) {
-      const dt = new Date(d.date);
-      const label = dt.toLocaleDateString(undefined, { month: "short" });
+      const label = fmt.month(d.date);
       const prev = months[months.length - 1];
       if (col === 0) months.push({ col, label });
-      else if (dt.getDate() <= 7) {
+      else if (d.dom <= 7) {
         if (prev && col - prev.col < 3) months[months.length - 1] = { col, label }; // too close: the newer month wins
         else months.push({ col, label });
       }
@@ -231,7 +241,7 @@ function CalendarCard({ log }) {
       <div ref={ref} className="relative">
         <svg width={width} height={H} role="img" aria-label={`${trained} training days in the last ${weeks} weeks`}>
           {months.map((mo) => <text key={mo.col} x={left + mo.col * (cell + gap)} y={10} fontSize="10" fill={C.ink2}>{mo.label}</text>)}
-          {["M", "", "W", "", "F", "", "S"].map((l, r) => l && (
+          {[0, 2, 4, 6].map((r) => ({ r, l: "SMTWTFS"[(cal.weekStartsOn + r) % 7] })).map(({ l, r }) => (
             <text key={r} x={0} y={top + r * (cell + gap) + cell / 2} dominantBaseline="middle" fontSize="10" fill={C.ink2}>{l}</text>
           ))}
           {cal.days.map((d, i) => {
@@ -247,7 +257,7 @@ function CalendarCard({ log }) {
         </svg>
         {h && (() => { const p = pos(hover); return (
           <Tip x={p.x + cell / 2} y={p.y} w={width}>
-            <span className="block text-mute">{fmtDay(h.date)}</span>
+            <span className="block text-mute">{fmt.day(h.date)}</span>
             <span className="block font-semibold">
               {h.plan || h.quick ? <>{[h.plan && `${h.plan} plan`, h.quick && `${h.quick} single`].filter(Boolean).join(" + ")} · {h.sets} sets</> : "Rest day"}
             </span>
@@ -268,12 +278,13 @@ function CalendarCard({ log }) {
 /* ── weekly volume per muscle ────────────────────────────────────────────── */
 const binOf = (v) => C.ramp.find((r) => v < r.max) || C.ramp[C.ramp.length - 1];
 
-function VolumeCard({ log }) {
+function VolumeCard({ log, calSettings }) {
+  const fmt = useFmt();
   const [ref, width] = useWidth();
   const [hover, setHover] = useState(null);
   const [table, setTable] = useState(false);
   const weeks = width < 400 ? 6 : 8;
-  const data = useMemo(() => weeklyVolumeSeries(log, weeks), [log, weeks]);
+  const data = useMemo(() => weeklyVolumeSeries(log, weeks, Date.now(), calSettings), [log, weeks, calSettings]);
   if (!data.muscles.length) {
     return <Card icon={BarChart3} title="Weekly volume" testid="volume-card"><p className="text-sm text-mute">Sets per muscle, week by week, appear once you’ve logged a session.</p></Card>;
   }
@@ -288,7 +299,7 @@ function VolumeCard({ log }) {
       {table ? (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
-            <thead><tr className="text-faint"><th className="text-left font-semibold py-1">Muscle</th>{data.weeks.map((w) => <th key={w.start} className="font-semibold text-right">{fmtShort(w.start)}</th>)}</tr></thead>
+            <thead><tr className="text-faint"><th className="text-left font-semibold py-1">Muscle</th>{data.weeks.map((w) => <th key={w.start} className="font-semibold text-right">{fmt.short(w.start)}</th>)}</tr></thead>
             <tbody>{data.muscles.map((m) => (
               <tr key={m} className="border-t border-line text-text"><td className="py-1.5">{MUSCLES[m].label}</td>{data.weeks.map((w) => <td key={w.start} className="text-right tabular-nums">{w.muscles[m] || 0}</td>)}</tr>
             ))}</tbody>
@@ -299,7 +310,7 @@ function VolumeCard({ log }) {
           <svg width={width} height={H} role="img" aria-label="Weekly sets per muscle">
             {data.weeks.map((w, c) => (c === 0 || c === data.weeks.length - 1 || c % 2 === 0) && (
               <text key={w.start} x={labelW + c * (cellW + gap) + cellW / 2} y={11} textAnchor="middle" fontSize="10" fill={C.ink2}>
-                {c === data.weeks.length - 1 ? "this wk" : fmtShort(w.start)}
+                {c === data.weeks.length - 1 ? "this wk" : fmt.short(w.start)}
               </text>
             ))}
             {data.muscles.map((m, r) => (
@@ -321,7 +332,7 @@ function VolumeCard({ log }) {
           </svg>
           {h && (
             <Tip x={h.x} y={h.y} w={width}>
-              <span className="block text-mute">{MUSCLES[h.m].label} · week of {fmtShort(data.weeks[h.c].start)}</span>
+              <span className="block text-mute">{MUSCLES[h.m].label} · week of {fmt.short(data.weeks[h.c].start)}</span>
               <span className="block font-semibold">{h.v} sets{h.v > 0 ? ` · ${h.v >= WEEKLY.high ? "above the useful range" : h.v >= WEEKLY.good ? "growth range" : h.v >= WEEKLY.low ? "light" : "barely touched"}` : ""}</span>
             </Tip>
           )}
@@ -339,6 +350,7 @@ function VolumeCard({ log }) {
 
 /* ── skill ladders ───────────────────────────────────────────────────────── */
 function SkillsCard({ log }) {
+  const fmt = useFmt();
   const skills = useMemo(() => skillTimeline(log), [log]);
   if (!skills.length) {
     return <Card icon={Target} title="Skills" testid="skills-card"><p className="text-sm text-mute">Pick a skill like the L-sit on the Body tab — every stage you reach shows up here with its date.</p></Card>;
@@ -359,7 +371,7 @@ function SkillsCard({ log }) {
                       {reached && !current ? <Check size={11} /> : st.index + 1}
                     </span>
                     <span className={cx("flex-1 min-w-0 truncate", current ? "text-text font-semibold" : reached ? "text-mute" : "text-faint")}>{st.name}</span>
-                    <span className="shrink-0 text-[12px] text-faint tabular-nums">{reached ? `since ${fmtShort(st.firstAt)}` : "—"}</span>
+                    <span className="shrink-0 text-[12px] text-faint tabular-nums">{reached ? `since ${fmt.short(st.firstAt)}` : "—"}</span>
                   </li>
                 );
               })}
@@ -372,10 +384,11 @@ function SkillsCard({ log }) {
 }
 
 /* ── the tab ─────────────────────────────────────────────────────────────── */
-export function ProgressPanel({ log, profile, onLogWorkout }) {
+export function ProgressPanel({ log, profile, onLogWorkout, cal }) {
   const customs = profile?.customExercises || [];
-  const s = useMemo(() => summary(log), [log]);
+  const s = useMemo(() => summary(log, Date.now(), cal), [log, cal]);
   return (
+    <TimeZone.Provider value={cal?.timeZone}>
     <div className="flex flex-col gap-4 pb-4" data-testid="progress-panel">
       <div className="rounded-2xl bg-gradient-to-br from-raised to-surface border border-line p-4">
         <p className="text-[11px] uppercase tracking-widest text-faint">Your progress</p>
@@ -393,9 +406,10 @@ export function ProgressPanel({ log, profile, onLogWorkout }) {
       </div>
       <Stats s={s} />
       <LiftCard log={log} customs={customs} />
-      <CalendarCard log={log} />
-      <VolumeCard log={log} />
+      <CalendarCard log={log} calSettings={cal} />
+      <VolumeCard log={log} calSettings={cal} />
       <SkillsCard log={log} />
     </div>
+    </TimeZone.Provider>
   );
 }

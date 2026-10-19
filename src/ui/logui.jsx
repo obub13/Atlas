@@ -7,6 +7,7 @@ import { PenLine, Plus, X, Wand2, Check, ChevronLeft, AlertTriangle, CalendarDay
 import { MUSCLES, EXERCISES } from "../engine/data.js";
 import { parseWorkoutText, matchMove, rowProblem, musclesOf, KNOWN_MOVES, canonicalId } from "../engine/logparse.js";
 import { cx, SectionTitle } from "./ui.jsx";
+import { dateKey } from "../engine/calendar.js";
 
 const FEELS = [
   { id: "easy", label: "Easy" },
@@ -15,7 +16,11 @@ const FEELS = [
 ];
 
 const pad = (n) => String(n).padStart(2, "0");
-export const localDate = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+/** "2026-10-18" in the user's calendar (their home zone), or this device's when none is given. */
+export const localDate = (t = Date.now(), cal) => {
+  if (cal) return dateKey(t, cal);
+  const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 let rowSeq = 0;
 const blankRow = (defaults = {}) => ({
@@ -161,9 +166,9 @@ function RowCard({ row, index, customs, onChange, onRemove, canRemove }) {
   );
 }
 
-export function LogWorkoutPanel({ profile, onSave, onBack, onViewProgress }) {
+export function LogWorkoutPanel({ profile, onSave, onBack, onViewProgress, cal }) {
   const customs = useMemo(() => (profile.customExercises || []).filter((c) => canonicalId(c.id, c.name) === c.id), [profile.customExercises]);
-  const today = localDate();
+  const today = localDate(Date.now(), cal);
   const [text, setText] = useState("");
   const [date, setDate] = useState(today);
   const [title, setTitle] = useState("");
@@ -205,7 +210,7 @@ export function LogWorkoutPanel({ profile, onSave, onBack, onViewProgress }) {
     } finally { setSaving(false); }
   };
 
-  const reset = () => { setText(""); setTitle(""); setDate(localDate()); setRows([blankRow()]); setNote(null); setSaved(null); };
+  const reset = () => { setText(""); setTitle(""); setDate(localDate(Date.now(), cal)); setRows([blankRow()]); setNote(null); setSaved(null); };
 
   if (saved) {
     return (

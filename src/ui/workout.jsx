@@ -4,7 +4,7 @@ import {
   AlertTriangle, Clock, Package, RotateCcw, Trophy, Repeat, Sparkles, Flame, Dumbbell, Wind, Zap,
 } from "lucide-react";
 import { MUSCLES, GOALS } from "../engine/data.js";
-import { cx, fmtTime, SectionTitle } from "./ui.jsx";
+import { cx, fmtTime, SectionTitle, WarmupWhy } from "./ui.jsx";
 
 const FEELS = [
   { id: "easy",  label: "Easy",  hint: "3+ reps left in the tank" },
@@ -168,7 +168,7 @@ export function roundsDone(workout, done) {
 
 /* ── the session: summary, notes, warm-up, work, cool-down ──────────────────── */
 export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels, onFeel, onRegenerate,
-  onNewSelection, onRepeat, skillSlot, stale, alternativesFor, onSwap, onHide, mode = "plan", onRoundRest, onFinish, nextDay }) {
+  onNewSelection, onRepeat, skillSlot, stale, alternativesFor, onSwap, onHide, mode = "plan", onRoundRest, onFinish, nextDay, onWarmupOn }) {
   const [swapIdx, setSwapIdx] = useState(null);
   const quick = mode === "quick";
 
@@ -375,6 +375,9 @@ export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels
         </div>
       )}
 
+      {w.warmupSkipped ? (
+        <WarmupWhy onTurnOn={onWarmupOn} />
+      ) : (
       <section>
         <SectionTitle icon={Flame}>
           Warm-up{" "}
@@ -392,6 +395,7 @@ export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels
           ))}
         </ol>
       </section>
+      )}
 
       {skillSlot}
 

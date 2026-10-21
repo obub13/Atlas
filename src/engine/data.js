@@ -263,6 +263,17 @@ export const EXERCISES = [
 
 // ── Warm-up moves, keyed to what they mobilize ────────────────────────────────
 // joint: true → prioritised for older trainees, who need more joint prep.
+/** Shown when someone turns the warm-up off: why it's there, without nagging. */
+export const WARMUP_WHY = {
+  title: "Why warm-ups are in the plan",
+  points: [
+    "Warm muscles contract harder and stretch further — your first working set is closer to your best set.",
+    "A few easy reps rehearse the movement, so heavy or fast lifts (swings, cleans, snatches) start with good form instead of finding it mid-set.",
+    "Joints and tendons tolerate load better after a few minutes of movement; that's where most training niggles start.",
+  ],
+  shortcut: "No time? Do one easy ramp-up set of your first exercise (lighter bell or half the reps) before the working sets. It takes about a minute.",
+};
+
 export const WARMUPS = [
   { name: "Jumping Jacks",           covers: ["*"], secs: 60, impact: true,  note: "Raise your heart rate and core temperature." },
   { name: "March in Place + Arm Swings", covers: ["*"], secs: 60, lowImpact: true, note: "Same job as jacks, no landing forces." },

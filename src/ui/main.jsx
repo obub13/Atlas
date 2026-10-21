@@ -29,7 +29,7 @@ import { calendarOf, deviceCalendar, validZone, instantOf } from "../engine/cale
 const DEFAULT_PROFILE = {
   age: 28, height: 175, weight: 75, level: null, goal: null, equipment: "bw",
   inventory: [...EQUIP_PRESETS.bw], customGear: [], skill: null, excluded: [],
-  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null, customExercises: [], weights: {},
+  sessionMinutes: 30, daysPerWeek: 3, quickPrefs: null, customExercises: [], weights: {}, warmup: true,
 };
 
 function normalize(p) {
@@ -38,6 +38,7 @@ function normalize(p) {
   if (!Array.isArray(out.customGear)) out.customGear = [];
   if (!Array.isArray(out.excluded)) out.excluded = [];
   if (!out.weights || typeof out.weights !== "object" || Array.isArray(out.weights)) out.weights = {};
+  out.warmup = out.warmup !== false;
   // the person's calendar: pinned to the zone/first weekday of the device they set up on
   const dev = deviceCalendar();
   if (!validZone(out.timeZone)) out.timeZone = dev.timeZone;
@@ -53,7 +54,7 @@ function signature(profile, selected) {
     muscles: [...selected].sort(), minutes: profile.sessionMinutes, level: profile.level, goal: profile.goal,
     skill: profile.skill || null, inventory: [...(profile.inventory || [])].sort(),
     custom: (profile.customGear || []).map((g) => g.actsAs).filter(Boolean).sort(),
-    age: profile.age, weight: profile.weight, weights: profile.weights || {},
+    age: profile.age, weight: profile.weight, weights: profile.weights || {}, warmup: profile.warmup !== false,
   });
 }
 
@@ -463,6 +464,7 @@ function App() {
 
   const workoutPanel = (
     <WorkoutPanel workout={workout} done={done} feels={feels} stale={stale} {...sessionProps("plan")}
+      onWarmupOn={() => patch({ warmup: true })}
       onRegenerate={() => generate(undefined, { jump: false, variant: stale ? 0 : (workout?.variant || 0) + 1 })}
       nextDay={(() => { const n = progress.order.find((i) => weekPlan.days[i].key !== workout?.dayKey); return n != null ? weekPlan.days[n] : null; })()}
       onNewSelection={() => {
@@ -498,6 +500,7 @@ function App() {
       <QuickPanel profile={profile} log={log} quick={quick} onStart={(cfg) => startQuick(cfg)}
         onChangeFocus={() => { setQuick(null); setRest(null); }}>
         <WorkoutPanel mode="quick" workout={quick} done={qDone} feels={qFeels} stale={false} {...sessionProps("quick")}
+          onWarmupOn={() => patch({ warmup: true })}
           onRegenerate={shuffleQuick}
           onNewSelection={() => { setQuick(null); setRest(null); }}
           onRepeat={() => { setQDone(new Set()); setRest(null); }}

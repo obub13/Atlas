@@ -513,7 +513,7 @@ function sessionSets(profile) {
   const limits = deriveLimits(profile);
   const minutes = +profile.sessionMinutes || 30;
   const totalSecs = minutes * 60;
-  const warmApprox = minutes <= 20 ? 140 : minutes <= 45 ? 180 : 220;
+  const warmApprox = profile.warmup === false ? 0 : minutes <= 20 ? 140 : minutes <= 45 ? 180 : 220;
   const stretchApprox = Math.min(6 * 35, totalSecs * 0.12);
   const skillApprox = profile.skill ? totalSecs * 0.28 : 0;
   const budget = Math.max(60, totalSecs - warmApprox - stretchApprox - skillApprox);
@@ -528,7 +528,7 @@ export function sessionCapacity(profile) {
   const limits = deriveLimits(profile);
   const minutes = +profile.sessionMinutes || 30;
   const totalSecs = minutes * 60;
-  const warmApprox = minutes <= 20 ? 140 : minutes <= 45 ? 180 : 220;
+  const warmApprox = profile.warmup === false ? 0 : minutes <= 20 ? 140 : minutes <= 45 ? 180 : 220;
   const stretchApprox = Math.min(6 * 35, totalSecs * 0.12);
   const skillApprox = profile.skill ? totalSecs * 0.28 : 0;
   const budget = Math.max(60, totalSecs - warmApprox - stretchApprox - skillApprox);
@@ -557,8 +557,10 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
   const minutes = +profile.sessionMinutes || 30;
   const block = currentBlock(profile.blockStarted);
 
-  // Warm-up and cool-down are carved out of the budget before any lifting.
-  const warmup = buildWarmup(muscles, minutes, limits, inv);
+  // Warm-up and cool-down are carved out of the budget before any lifting —
+  // unless the person has chosen to skip the warm-up; then that time trains.
+  const warmupSkipped = profile.warmup === false;
+  const warmup = warmupSkipped ? [] : buildWarmup(muscles, minutes, limits, inv);
   const warmSecs = warmup.reduce((t, w) => t + w.secs, 0);
   const totalSecs = minutes * 60;
   // Cool-down is capped as a share of the session, not left to grow with the
@@ -569,6 +571,29 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
   const skillCap = skillLed ? totalSecs * 0.7 : totalSecs * 0.33;
   const skill = buildSkillBlock(profile, log, inv, skillCap);
   const budget = totalSecs - warmSecs - stretchReserve - (skill ? skill.cost : 0);
+
+  // Continuity: the lifts you've actually been progressing on this block keep
+  // their slot. Any settings change (warm-up off, a few more minutes) re-solves
+  // the session, but a lift with rated plan history since the block began
+  // stays the anchor while it still qualifies — so its numbers keep climbing.
+  // Rebuilds (variant > 0) and single sessions (fresh) are free to vary.
+  // (no block start on the profile → the last four weeks, the length of a block)
+  const blockFrom = profile.blockStarted ? block.started + block.index * 28 * 864e5 : Date.now() - 28 * 864e5;
+  // Weighted: a lift done on THIS day of the split (same muscles) outranks one
+  // done for the same muscle on another day; ties go to the most recent.
+  const continuity = new Map(), lastSets = new Map();
+  if (!fresh && variant === 0) {
+    const here = new Set(muscles);
+    for (const e of log) {
+      if (!e.feel || (e.source || "plan") !== "plan" || e.at < blockFrom) continue;
+      const theirs = String(e.dayKey || "").split(",").filter(Boolean);
+      const inter = theirs.filter((m) => here.has(m)).length;
+      const sameDay = theirs.length && inter / Math.min(theirs.length, here.size) >= 0.5 ? 1 : 0;
+      const w = sameDay * 1e13 + e.at;
+      if (w > (continuity.get(e.exerciseId) || 0)) { continuity.set(e.exerciseId, w); lastSets.set(e.exerciseId, e.sets || 0); }
+    }
+  }
+  const sameDayLift = (id) => (continuity.get(id) || 0) >= 1e13;
 
   // Majors are the session; minors are accessory work and get deferred first.
   const ordered = [...muscles].sort((a, b) => {
@@ -676,11 +701,32 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
   if (oversubscribed) {
     const uncovered = new Set(ordered);
     const taken = new Set();
+    // the lifts you've been progressing on this day go in first, then the
+    // set-cover fills what's left — so more time adds work, it doesn't swap it
+    // biggest doses first: those were the session's main lifts, not its fillers
+    const seeds = ordered.map((m, i) => ({ i, ex: candidatesFor(m, inv, limits, profile, log, skillAccessories)
+      .filter((e) => sameDayLift(e.id) && e.primary === m)
+      .sort((a, b) => continuity.get(b.id) - continuity.get(a.id))[0] }))
+      .filter((x) => x.ex)
+      .sort((a, b) => (lastSets.get(b.ex.id) || 0) - (lastSets.get(a.ex.id) || 0) || a.i - b.i);
+    for (const { ex: mine } of seeds) {
+      if (plan.length >= affordableExercises) break;
+      if (taken.has(mine.id)) continue;
+      for (let sets = setsEach; sets >= 2; sets--) {
+        const entry = makeEntry(mine, sets);
+        const cost = costOf(mine, sets, entry.presc);
+        if (used + cost > budget) continue;
+        entry.role = "anchor"; plan.push(entry); used += cost; taken.add(mine.id);
+        uncovered.delete(mine.primary); mine.secondary.forEach((x) => uncovered.delete(x));
+        break;
+      }
+    }
     while (uncovered.size && plan.length < affordableExercises) {
       let best = null;
       for (const m of ordered) {
         if (!uncovered.has(m)) continue;
-        for (const ex of candidatesFor(m, inv, limits, profile, log, skillAccessories).slice(0, 4)) {
+        const all = candidatesFor(m, inv, limits, profile, log, skillAccessories);
+        for (const ex of [...new Set([...all.slice(0, 4), ...all.filter((e) => continuity.has(e.id))])]) {
           if (taken.has(ex.id)) continue;
           // Weight coverage by how much a muscle actually contributes to a
           // session — covering quads is worth more than covering forearms.
@@ -696,7 +742,7 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
             // never enough to trade a squat for a calf raise.
             const spread = fresh ? 0.45 : 0.15;
             const jitter = variant ? ((hash(`${ex.id}|v${variant}`) % 1000) / 1000) * spread : 0;
-            const score = (reach / (cost / 60)) * (1 + jitter);
+            const score = (reach / (cost / 60)) * (1 + jitter) * (sameDayLift(ex.id) ? 1.6 : continuity.has(ex.id) ? 1.2 : 1);
             if (!best || score > best.score + 1e-9) best = { ex, entry, cost, score };
             break;
           }
@@ -725,7 +771,8 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
     // Minor muscles already well covered by the compounds we've chosen don't
     // need their own slot — a trainer says "your presses covered triceps".
     const eff = effective();
-    if (MUSCLES[m].tier === "minor" && (eff[m] || 0) >= 3) continue;
+    // (…unless it's a lift you've been progressing on this day — that stays.)
+    if (MUSCLES[m].tier === "minor" && (eff[m] || 0) >= 3 && !cands.some((e) => sameDayLift(e.id))) continue;
 
     // Variant 0 is the block's stable anchor — the lift you progress on.
     // Rebuilding steps `variant` up, which walks through the equal-quality pool
@@ -735,9 +782,14 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
     const pool = variant > 0
       ? [...best, ...cands.filter((e) => !best.includes(e))].slice(0, Math.max(3, Math.min(cands.length, 5)))
       : best.slice(0, 3);
-    const anchor = fresh
+    // the lift you've been doing on this day, even if the pool would pick a "better" one;
+    // otherwise one you've done for this muscle elsewhere, if it's top quality
+    const byRecency = (a, b) => continuity.get(b.id) - continuity.get(a.id);
+    const kept = cands.filter((e) => sameDayLift(e.id)).sort(byRecency)[0]
+      || best.filter((e) => continuity.has(e.id)).sort(byRecency)[0];
+    const anchor = kept || (fresh
       ? pool[hash(`${m}|fresh|${variant}`) % pool.length]
-      : pool[(hash(`${m}|${block.index}|${profile.equipment}|${profile.goal}`) + variant) % pool.length];
+      : pool[(hash(`${m}|${block.index}|${profile.equipment}|${profile.goal}`) + variant) % pool.length]);
 
     // Breadth beats depth: if the full dose won't fit, take a smaller one
     // rather than dropping the muscle entirely. The dose also has to respect
@@ -948,6 +1000,7 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
     noGear: deferred.filter((d) => d.why === "gear").map((d) => d.muscle),
     outOfTime: deferred.filter((d) => d.why === "time").map((d) => d.muscle),
     warmup,
+    warmupSkipped,
     exercises,
     stretches,
     estMinutes,

@@ -3,7 +3,7 @@ import {
   Flame, Dumbbell, Zap, Activity, Search, X, Check, Timer, Sparkles, Target,
   PersonStanding, Cable, Building2, ChevronRight,
 } from "lucide-react";
-import { MUSCLES, PRESETS, GOALS, LEVELS, TIME_OPTIONS } from "../engine/data.js";
+import { MUSCLES, PRESETS, GOALS, LEVELS, TIME_OPTIONS, WARMUP_WHY } from "../engine/data.js";
 import { BASE, MUSCLE_SHAPES, ABS_LINES } from "../engine/anatomy.js";
 
 export const ICONS = { Flame, Dumbbell, Zap, Activity, PersonStanding, Cable, Building2 };
@@ -224,6 +224,35 @@ export function SelectPanel({ profile, selected, setSelected, onGenerate, hasWor
       <p className="text-xs text-faint text-center -mt-2">
         {profile.sessionMinutes} min · {LEVELS[profile.level]?.label.toLowerCase()} · {GOALS[profile.goal]?.label.toLowerCase()} · {profile.inventory.length} items of gear
       </p>
+    </div>
+  );
+}
+
+/* ── warm-up off: a short, non-nagging note on why it exists ──────────────── */
+export function WarmupWhy({ onTurnOn, defaultOpen = false, compact = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-amberGold/40 bg-amberGold/5 px-4 py-3" data-testid="warmup-why" role="note">
+      <div className="flex items-center gap-2">
+        <Flame size={15} className="text-amberGold shrink-0" aria-hidden />
+        <p className="flex-1 min-w-0 text-[13px] text-text font-semibold">{compact ? "Skipping the warm-up" : "Warm-up skipped (your choice)"}</p>
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+          className="shrink-0 text-[12px] font-semibold text-amberGold hover:underline">{open ? "Hide" : "Why it matters"}</button>
+      </div>
+      {open && (
+        <div className="mt-2">
+          <p className="text-[12px] text-mute">{WARMUP_WHY.title}:</p>
+          <ul className="mt-1 grid gap-1 text-[12px] text-mute list-disc pl-4">
+            {WARMUP_WHY.points.map((p) => <li key={p}>{p}</li>)}
+          </ul>
+          <p className="mt-2 text-[12px] text-text">{WARMUP_WHY.shortcut}</p>
+        </div>
+      )}
+      {onTurnOn && (
+        <button type="button" onClick={onTurnOn} className="mt-2 text-[12px] font-semibold text-emberSoft hover:underline" data-testid="warmup-on">
+          Add the warm-up back
+        </button>
+      )}
     </div>
   );
 }

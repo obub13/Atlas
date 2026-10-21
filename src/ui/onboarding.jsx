@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { ChevronRight, ChevronLeft, Check, HeartPulse, Timer, CalendarDays } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, HeartPulse, Timer, CalendarDays, Flame } from "lucide-react";
 import { GOALS, LEVELS, TIME_OPTIONS, SPLITS } from "../engine/data.js";
 import { GearList } from "./equipment.jsx";
-import { cx, ICONS } from "./ui.jsx";
+import { cx, ICONS, WarmupWhy } from "./ui.jsx";
 
 export const NumField = ({ label, unit, value, onChange, min, max }) => (
   <label className="block">
@@ -141,6 +141,20 @@ export function Onboarding({ initial, onDone }) {
                   </button>
                 ))}
               </div>
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-mute mt-6 mb-2">
+                <Flame size={14} className="text-ember" /> Warm up before each session?
+              </p>
+              <div className="grid grid-cols-2 gap-2" data-testid="onboarding-warmup">
+                {[[true, "Yes", "2–4 min, matched to the day"], [false, "No, skip it", "More time for working sets"]].map(([v, label, sub]) => (
+                  <button key={label} onClick={() => set("warmup", v)} aria-pressed={(p.warmup !== false) === v}
+                    className={cx("rounded-xl border px-3 py-2.5 text-left transition-all",
+                      (p.warmup !== false) === v ? "border-ember bg-ember/10 shadow-ember" : "border-line bg-surface hover:border-edge")}>
+                    <span className={cx("block font-display text-base font-bold", (p.warmup !== false) === v ? "text-emberSoft" : "text-text")}>{label}</span>
+                    <span className="block text-[11px] text-mute">{sub}</span>
+                  </button>
+                ))}
+              </div>
+              {p.warmup === false && <div className="mt-2"><WarmupWhy defaultOpen /></div>}
               {split && (
                 <p className="text-[13px] text-mute mt-4">
                   We'll plan your week as <span className="text-emberSoft font-semibold">{split.name}</span> — {p.daysPerWeek} sessions of about {p.sessionMinutes} minutes.

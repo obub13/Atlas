@@ -272,6 +272,27 @@ export function weekStart(now = Date.now(), cal = fallbackCalendar()) {
 }
 
 /**
+ * Which day of the current plan a logged day was. Exact key first; if the plan
+ * has since changed (warm-up turned off, more minutes, a muscle added), the
+ * day with the most muscles in common — at least half of either — so a week
+ * in progress keeps its ticks instead of resetting. null if nothing is close.
+ */
+export function dayFor(key, days) {
+  const exact = days.findIndex((d) => d.key === key);
+  if (exact >= 0) return exact;
+  const a = new Set(String(key).split(",").filter(Boolean));
+  let best = null, bestScore = 0;
+  days.forEach((d, i) => {
+    const b = new Set(d.muscles);
+    const inter = [...a].filter((m) => b.has(m)).length;
+    const score = inter / Math.min(a.size || 1, b.size || 1);
+    const jac = inter / (a.size + b.size - inter || 1);
+    if (score >= 0.5 && jac > bestScore) { best = i; bestScore = jac; }
+  });
+  return best;
+}
+
+/**
  * Where you stand this week. The week starts on the user's first weekday
  * (Sunday in Israel, Monday in most of Europe) in their home time zone,
  * but the ORDER carries over: the next day is the one not done this week that
@@ -283,12 +304,18 @@ export function weekProgress(plan, log, now = Date.now(), cal = fallbackCalendar
   const since = weekStart(now, cal);
   const lastWeek = addDays(since, -7, cal);
   const planEntries = log.filter((e) => (e.source || "plan") === "plan" && e.dayKey && e.at <= now);
-  const lastAt = new Map();
-  for (const e of planEntries) if (!lastAt.has(e.dayKey) || e.at > lastAt.get(e.dayKey)) lastAt.set(e.dayKey, e.at);
-  const doneKeys = new Set(planEntries.filter((e) => e.at >= since).map((e) => e.dayKey));
-  const prevKeys = new Set(planEntries.filter((e) => e.at >= lastWeek && e.at < since).map((e) => e.dayKey));
-  const done = plan.days.map((d) => doneKeys.has(d.key));
-  const lastDone = plan.days.map((d) => lastAt.get(d.key) ?? null);
+  // each logged day → the day of THIS plan it was (see dayFor: survives the split changing)
+  const indexOf = new Map();
+  for (const k of new Set(planEntries.map((e) => e.dayKey))) indexOf.set(k, dayFor(k, plan.days));
+  const lastDone = plan.days.map(() => null);
+  const done = plan.days.map(() => false), prev = plan.days.map(() => false);
+  for (const e of planEntries) {
+    const i = indexOf.get(e.dayKey);
+    if (i == null) continue;
+    if (lastDone[i] == null || e.at > lastDone[i]) lastDone[i] = e.at;
+    if (e.at >= since) done[i] = true;
+    else if (e.at >= lastWeek) prev[i] = true;
+  }
   const order = plan.days.map((_, i) => i).filter((i) => !done[i])
     .sort((a, b) => (lastDone[a] ?? -Infinity) - (lastDone[b] ?? -Infinity) || a - b);
   const next = order.length ? order[0] : null;
@@ -296,7 +323,7 @@ export function weekProgress(plan, log, now = Date.now(), cal = fallbackCalendar
     done, doneCount: done.filter(Boolean).length, next, order, lastDone,
     complete: plan.days.length > 0 && next === null,
     weekStart: since,
-    lastWeekCount: plan.days.filter((d) => prevKeys.has(d.key)).length,
+    lastWeekCount: prev.filter(Boolean).length,
     nextReason: next == null ? null : lastDone[next] == null ? "not trained yet" : "longest since you trained it",
   };
 }

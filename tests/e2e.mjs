@@ -382,6 +382,24 @@ for (const [day, n, text] of [["Monday", 1, "Monday to Sunday"], ["Sunday", 0, "
 }
 ok(!!(await db.profile(uid)).settings.timeZone, `the home time zone is saved with the profile (${(await db.profile(uid)).settings.timeZone})`);
 
+/* ── 13. skipping the warm-up ─────────────────────────────────────────────── */
+console.log("warm-up off");
+await page.getByRole("button", { name: "Open profile" }).click();
+await main(page).getByTestId("warmup-setting").getByRole("button", { name: "Skip it", exact: true }).click();
+await until(async () => (await db.profile(uid)).settings.warmup === false);
+ok((await db.profile(uid)).settings.warmup === false && await main(page).getByTestId("warmup-why").isVisible(), "Skip it: saved, and Profile explains why warm-ups exist");
+await page.getByRole("button", { name: "Week", exact: true }).click();
+await main(page).getByTestId("week-day").first().click();
+await wait(300);
+ok(await main(page).getByTestId("warmup-why").isVisible() && !(await main(page).getByRole("heading", { name: /^Warm-up/ }).count()), "the session has no warm-up block, just the short note");
+await main(page).getByTestId("warmup-why").getByRole("button", { name: "Why it matters" }).click();
+ok(/ramp-up set/.test(await main(page).getByTestId("warmup-why").innerText()), "“Why it matters” opens the reasons and the one-minute alternative");
+await main(page).getByTestId("warmup-why").screenshot({ path: "tests/shots/warmup-off-note.png" }).catch(() => {});
+await main(page).getByTestId("warmup-on").click();
+await until(async () => (await db.profile(uid)).settings.warmup === true);
+await wait(300);
+ok((await db.profile(uid)).settings.warmup === true && await main(page).getByRole("heading", { name: /^Warm-up/ }).count() > 0, "“Add the warm-up back” puts it back in the session");
+
 ok(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
 await browser.close();
 await fake.close();

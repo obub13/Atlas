@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LogOut, User, Package, EyeOff, CalendarDays, RotateCcw, Database, Download, Pencil, Check } from "lucide-react";
 import { GOALS, LEVELS, TIME_OPTIONS, EXERCISES } from "../engine/data.js";
 import { bmi } from "../engine/generator.js";
-import { SectionTitle, Chip } from "./ui.jsx";
+import { SectionTitle, Chip, WarmupWhy } from "./ui.jsx";
 import { SessionRow } from "./plan.jsx";
 import { NumField } from "./onboarding.jsx";
 import { GearList, kitCoverage } from "./equipment.jsx";
@@ -129,6 +129,16 @@ export function ProfilePanel({ profile, onChange, onReset, sessions, history = [
         <Choice label="Primary goal" options={GOALS} value={profile.goal} onChange={(v) => onChange({ goal: v })} />
         <Choice label="Minutes per session" options={minuteOpts} value={profile.sessionMinutes} onChange={(v) => onChange({ sessionMinutes: +v })} />
         <Choice label="Days per week" options={dayOpts} value={profile.daysPerWeek} onChange={(v) => onChange({ daysPerWeek: +v })} />
+        <div data-testid="warmup-setting">
+          <Choice label="Warm-up" options={{ on: { label: "Include it" }, off: { label: "Skip it" } }}
+            value={profile.warmup === false ? "off" : "on"} onChange={(v) => onChange({ warmup: v === "on" })} />
+          <p className="text-xs text-faint mt-2">
+            {profile.warmup === false
+              ? "The 2–4 minutes go to your working sets instead. Same exercises, same progress."
+              : "2–4 minutes matched to what you're training, taken from your session time."}
+          </p>
+          {profile.warmup === false && <div className="mt-2"><WarmupWhy compact /></div>}
+        </div>
         <WeekSettings profile={profile} onChange={onChange} />
         <p className="text-xs text-faint">Changes apply the next time you build a routine.</p>
       </div>

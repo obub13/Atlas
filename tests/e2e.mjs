@@ -215,6 +215,25 @@ ok(await main(page).getByTestId("lift-change").isVisible(), "picking another exe
 await main(page).getByTestId("lift-card").getByRole("button", { name: "Table" }).click();
 ok(await main(page).getByTestId("lift-card").locator("tbody tr").count() >= 1, "table view lists the data points");
 ok(await main(page).getByTestId("cal-day-trained").count() >= 1, "calendar marks today as a training day");
+// tap today on the calendar → the workouts → do one again
+await main(page).getByTestId("cal-day-trained").last().click();
+const detail = main(page).getByTestId("day-detail");
+ok(await detail.isVisible() && await detail.getByTestId("day-session").count() >= 2, `tapping a day lists that day's workouts (${await detail.getByTestId("day-session").count()})`);
+await main(page).getByTestId("calendar-card").screenshot({ path: "tests/shots/day-detail-mobile.png" }).catch(() => {});
+ok(await detail.getByTestId("day-move").count() >= 3 && /\d+ × /.test(await detail.getByTestId("day-move").first().innerText()), "…with each move's sets × reps");
+const firstMove = (await detail.getByTestId("day-session").first().getByTestId("day-move").first().innerText()).split("\n")[0].trim();
+const quickBefore = (await db.sessions(uid)).filter((s) => s.source === "quick").length;
+await detail.getByTestId("day-session").first().getByTestId("day-repeat").click();
+await main(page).getByRole("heading", { name: /again/i }).waitFor();
+ok(await main(page).getByRole("heading", { name: /again/i }).isVisible() && (await names(page)).includes(firstMove), `“Do this workout again” opens it as today's single session (starts with ${firstMove})`);
+ok(!(await main(page).getByRole("button", { name: "Rebuild with different movements" }).count()), "a repeat has no shuffle — it's the workout you picked");
+await tickAll(page, firstMove);
+await main(page).getByRole("button", { name: /^Right/ }).first().click();
+await until(async () => (await db.sessions(uid)).filter((s) => s.source === "quick").length > quickBefore);
+const again = (await db.sessions(uid)).filter((s) => s.source === "quick").find((s) => /again/.test(s.label || ""));
+ok(!!again && again.day_key === null, `doing it saves a new single session (“${again?.label}”), not a plan day`);
+await page.getByRole("button", { name: "Progress", exact: true }).click();
+await synced(page);
 ok(await main(page).getByTestId("volume-card").locator("rect").count() > 10, "weekly volume heatmap renders");
 ok(/L-Sit/.test(await main(page).getByTestId("skills-card").innerText()), "skill ladder shows the L-sit");
 await page.screenshot({ path: "tests/shots/progress-mobile.png", fullPage: true }).catch(() => {});

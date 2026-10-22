@@ -87,5 +87,12 @@ const run = (ex, prof, feels, start = []) => {
   ok(odd.load === 14, "a logged weight you don't own (15 kg) is read as the nearest bell you do");
 }
 
+{
+  const pu = EXERCISES.find((e) => e.id === "pullup");
+  const bw = [{ exerciseId: "pullup", ladder: "chin", sets: 2, reps: [8, 12], load: null, feel: "easy", muscles: ["lats"], at: Date.now() - 2 * DAY, source: "plan", format: "sets", sessionId: "p1", slot: "0" }];
+  const nx = progressionFor(pu, p, bw);
+  ok(nx.load == null, `a bodyweight pull-up stays bodyweight when you own bells (got ${nx.load ?? "no load"})`);
+}
+
 console.log(failures ? `\n❌ ${failures} FAILURES` : "\n✅ only bells you own are ever prescribed");
 process.exitCode = failures ? 1 : 0;

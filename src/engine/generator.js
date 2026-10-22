@@ -189,7 +189,10 @@ function fixedWeightProgression(ex, profile, allLog, inv, owned) {
   if (open.isFirst || ex.timed || !open.prev) return open.load != null ? { ...open, load: nearestOwned(open.load, owned) } : open;
   const base = repsFor(ex, profile, inv);
   const prev = open.prev;
-  const prevLoad = nearestOwned(prev.load ?? suggestLoad(ex, profile, inv), owned);
+  // done unloaded (a bodyweight pull-up) and no load to suggest → stays unloaded
+  const rawPrev = prev.load ?? suggestLoad(ex, profile, inv);
+  if (rawPrev == null) return open;
+  const prevLoad = nearestOwned(rawPrev, owned);
   const prevTop = prev.reps ? prev.reps[1] : base.reps[1];
   const heaviest = owned[owned.length - 1];
   const up = stepOwned(prevLoad, owned, 1);
@@ -1013,6 +1016,12 @@ export function buildWorkout(profile, selected, log = [], { variant = 0, format 
 }
 
 /* ── warm-up: matched to the muscles trained, the clock, and the person ───── */
+/** The warm-up a session on these muscles would get (empty when the person skips warm-ups). */
+export function warmupFor(muscles, profile) {
+  if (profile.warmup === false) return [];
+  return buildWarmup(muscles, +profile.sessionMinutes || 30, deriveLimits(profile), inventoryOf(profile));
+}
+
 function buildWarmup(muscles, minutes, limits, inv) {
   const slots = minutes <= 12 ? 2 : minutes <= 20 ? 3 : minutes <= 45 ? 4 : 5;
   // Resolve each warm-up's wording to the implement actually owned.

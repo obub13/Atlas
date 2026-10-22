@@ -119,7 +119,7 @@ export function QuickPanel({ profile, log, quick, onStart, onChangeFocus, childr
     <div className="flex flex-col gap-3">
       <button onClick={onChangeFocus}
         className="self-start inline-flex items-center gap-1 text-[13px] font-semibold text-mute hover:text-text">
-        <ChevronLeft size={15} /> Change focus or length
+        <ChevronLeft size={15} /> {quick.repeatOf ? "Back to single sessions" : "Change focus or length"}
       </button>
       {children}
     </div>

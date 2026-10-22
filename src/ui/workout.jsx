@@ -229,7 +229,8 @@ export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-widest text-faint">
-              {quick ? "Single session · not part of your plan"
+              {quick && w.repeatOf ? "Repeating a past workout · not part of your plan"
+                : quick ? "Single session · not part of your plan"
                 : w.dayCount ? <>Day {w.dayIndex + 1} of {w.dayCount} · block {w.block.index + 1}, week {w.block.week}</>
                 : <>Today’s session · block {w.block.index + 1}, week {w.block.week}</>}
             </p>
@@ -238,10 +239,12 @@ export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels
 
             </h2>
           </div>
+          {onRegenerate && (
           <button onClick={onRegenerate} title="Rebuild with different movements" aria-label="Rebuild with different movements"
             className="inline-flex items-center gap-1.5 rounded-xl bg-raised border border-line px-3 py-2 text-[12px] font-semibold text-mute hover:text-emberSoft hover:border-ember/50 transition-colors shrink-0">
             <RotateCcw size={14} /> {quick ? "Shuffle" : "Rebuild"}
           </button>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-2 mt-4 text-center">
           {stats.map(([v, l]) => (
@@ -293,8 +296,14 @@ export function WorkoutPanel({ workout, done, onToggleSet, onLoad, onRest, feels
         </div>
       )}
 
-      {(w.deferred.length > 0 || w.light.length > 0 || w.oversubscribed || indirect.length > 0 || w.ageNote || w.balance || w.ceilingNote) && (
+      {(w.deferred.length > 0 || w.light.length > 0 || w.oversubscribed || indirect.length > 0 || w.ageNote || w.balance || w.ceilingNote || w.skipped?.length > 0) && (
         <div className="rounded-2xl border border-line bg-surface p-4 flex flex-col gap-2.5">
+          {w.skipped?.length > 0 && (
+            <p className="text-[13px] text-mute flex gap-2" data-testid="repeat-skipped">
+              <Info size={14} className="text-amberGold shrink-0 mt-0.5" />
+              <span>Left out: {w.skipped.map((x) => `${x.name} (${x.why})`).join(", ")}.</span>
+            </p>
+          )}
           {w.ceilingNote && (
             <p className="text-[13px] text-mute flex gap-2">
               <Info size={14} className="text-sky shrink-0 mt-0.5" /><span>{w.ceilingNote}</span>

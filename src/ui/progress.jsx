@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { LineChart, CalendarDays, BarChart3, Target, Table2, TrendingUp, TrendingDown, Minus, Flame, Check, PenLine } from "lucide-react";
+import { LineChart, CalendarDays, BarChart3, Target, Table2, TrendingUp, TrendingDown, Minus, Flame, Check, PenLine, X, Repeat } from "lucide-react";
 import { MUSCLES, WEEKLY } from "../engine/data.js";
 import { summary, exercisesLogged, liftSeries, calendar, weeklyVolumeSeries, skillTimeline, niceTicks } from "../engine/progress.js";
 import { cx, SectionTitle } from "./ui.jsx";
+import { sessionsOnDay } from "../engine/repeat.js";
+import { instantOf } from "../engine/calendar.js";
 
 /* Chart tokens — validated against the card surface (#141B26) with the
    dataviz validator: categorical pair passes every dark-mode gate; the volume
@@ -210,10 +212,11 @@ function LiftCard({ log, customs = [] }) {
 }
 
 /* ── training calendar ───────────────────────────────────────────────────── */
-function CalendarCard({ log, calSettings }) {
+function CalendarCard({ log, calSettings, profile, onRepeat }) {
   const fmt = useFmt();
   const [ref, width] = useWidth();
   const [hover, setHover] = useState(null);
+  const [picked, setPicked] = useState(null); // a calendar date key, e.g. "2026-10-16"
   const weeks = Math.max(8, Math.min(26, Math.floor((width - 22) / 23)));
   const cal = useMemo(() => calendar(log, weeks, Date.now(), calSettings), [log, weeks, calSettings]);
   const left = 22, top = 16, gap = 3;
@@ -248,8 +251,12 @@ function CalendarCard({ log, calSettings }) {
             const { x, y } = pos(i);
             if (d.future) return null;
             return (
-              <g key={i} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} onPointerLeave={() => setHover(null)} data-testid={d.plan || d.quick ? "cal-day-trained" : undefined}>
-                <rect x={x} y={y} width={cell} height={cell} rx="3" fill={fillOf(d)} stroke={hover === i ? C.ink : "none"} strokeWidth="1.5" />
+              <g key={i} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)} onPointerLeave={() => setHover(null)}
+                onClick={() => { setPicked(d.key); setHover(null); }} style={{ cursor: "pointer" }}
+                role="button" tabIndex={d.plan || d.quick ? 0 : -1} aria-label={`${fmt.day(d.date)}: ${d.plan || d.quick ? `${d.sets} sets` : "rest day"}`}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(d.key); } }}
+                data-testid={d.plan || d.quick ? "cal-day-trained" : "cal-day"} data-date={d.key}>
+                <rect x={x} y={y} width={cell} height={cell} rx="3" fill={fillOf(d)} stroke={hover === i || picked === d.key ? C.ink : "none"} strokeWidth="1.5" />
                 {d.plan > 0 && d.quick > 0 && <circle cx={x + cell / 2} cy={y + cell / 2} r={Math.max(2.5, cell / 5)} fill={C.quick} stroke={C.plan} strokeWidth="1" />}
               </g>
             );
@@ -267,11 +274,63 @@ function CalendarCard({ log, calSettings }) {
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[12px] text-mute" aria-label="Legend">
         <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-[3px]" style={{ background: C.plan }} />Plan session</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-[3px]" style={{ background: C.quick }} />Single session</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-[3px]" style={{ background: C.quick }} />Single or logged</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-[3px] grid place-items-center" style={{ background: C.plan }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: C.quick }} /></span>Both</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-[3px] border border-line" style={{ background: C.empty }} />Rest</span>
       </div>
+      {picked
+        ? <DayDetail day={picked} log={log} calSettings={calSettings} profile={profile} onRepeat={onRepeat} onClose={() => setPicked(null)} />
+        : trained > 0 && <p className="text-[12px] text-faint mt-2">Tap a day to see the workout you did.</p>}
     </Card>
+  );
+}
+
+/* ── one day: what you actually did, and a way to do it again ─────────────── */
+const KIND_LABEL = { plan: "Plan day", quick: "Single session", manual: "Logged" };
+const fmtDose = (m) => `${m.sets} × ${m.holdSecs ? `${m.holdSecs}s` : m.reps ? (m.reps[0] === m.reps[1] ? m.reps[0] : `${m.reps[0]}–${m.reps[1]}`) : "—"}${m.load ? ` @ ${m.load} kg` : ""}`;
+
+function DayDetail({ day, log, calSettings, profile, onRepeat, onClose }) {
+  const fmt = useFmt();
+  const sessions = useMemo(() => sessionsOnDay(log, day, calSettings, profile?.customExercises || [], profile), [log, day, calSettings, profile]);
+  const [y, mo, d] = day.split("-").map(Number);
+  const title = fmt.day(instantOf(y, mo, d, 12, 0, calSettings?.timeZone || "UTC"));
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-well p-3" data-testid="day-detail">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-display text-lg font-semibold text-text">{title}</p>
+        <button onClick={onClose} aria-label="Close day" className="text-faint hover:text-text"><X size={16} /></button>
+      </div>
+      {!sessions.length && <p className="text-[13px] text-mute mt-1">Rest day — nothing logged.</p>}
+      {sessions.map((s) => (
+        <div key={s.id} className="mt-2 rounded-lg border border-line bg-surface p-3" data-testid="day-session">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-text min-w-0 truncate">{s.label || KIND_LABEL[s.source] || "Workout"}</p>
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-faint">{KIND_LABEL[s.source] || s.source}{s.format === "circuit" ? " · circuit" : ""}</span>
+          </div>
+          <ol className="mt-2 grid gap-1">
+            {s.moves.map((m, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-[13px]" data-testid="day-move">
+                <span className="min-w-0 flex-1 text-text leading-snug break-words">{m.name}</span>
+                <span className="shrink-0 tabular-nums text-mute text-right">{fmtDose(m)}</span>
+                <span className={cx("shrink-0 w-9 text-right text-[11px]", m.feel === "hard" ? "text-crit" : m.feel === "easy" ? "text-mint" : "text-faint")}>{m.feel || "—"}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="flex items-center justify-between gap-2 mt-2.5">
+            <span className="text-[11px] text-faint">{s.sets} set{s.sets === 1 ? "" : "s"}</span>
+            {onRepeat && s.repeatable && (
+              <button onClick={() => onRepeat(s)} data-testid="day-repeat"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ember px-3 py-1.5 text-[12px] font-bold text-ink hover:bg-emberSoft">
+                <Repeat size={13} /> Do this workout again
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      {sessions.some((s) => s.repeatable) && (
+        <p className="text-[11px] text-faint mt-2">Runs as a single session with today’s targets — rated moves move on, the rest repeat exactly. Counts toward progress, not plan days.</p>
+      )}
+    </div>
   );
 }
 
@@ -384,7 +443,7 @@ function SkillsCard({ log }) {
 }
 
 /* ── the tab ─────────────────────────────────────────────────────────────── */
-export function ProgressPanel({ log, profile, onLogWorkout, cal }) {
+export function ProgressPanel({ log, profile, onLogWorkout, cal, onRepeat }) {
   const customs = profile?.customExercises || [];
   const s = useMemo(() => summary(log, Date.now(), cal), [log, cal]);
   return (
@@ -406,7 +465,7 @@ export function ProgressPanel({ log, profile, onLogWorkout, cal }) {
       </div>
       <Stats s={s} />
       <LiftCard log={log} customs={customs} />
-      <CalendarCard log={log} calSettings={cal} />
+      <CalendarCard log={log} calSettings={cal} profile={profile} onRepeat={onRepeat} />
       <VolumeCard log={log} calSettings={cal} />
       <SkillsCard log={log} />
     </div>

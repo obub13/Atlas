@@ -11,6 +11,7 @@ import { getConfig, saveConfig, clearConfig, getClient } from "../data/client.js
 import { createRepo } from "../data/repo.js";
 import { uuid } from "../data/mapping.js";
 import { buildQuickWorkout, newSeed } from "../engine/quick.js";
+import { repeatSession } from "../engine/repeat.js";
 import { ICONS, cx, SelectPanel } from "./ui.jsx";
 import { Onboarding } from "./onboarding.jsx";
 import { WorkoutPanel, RestTimer, roundsDone } from "./workout.jsx";
@@ -267,6 +268,14 @@ function App() {
     setTab("quick");
     try { window.scrollTo({ top: 0 }); } catch {}
   };
+  /** Run a past session again (from the Progress calendar) as a single session. */
+  const repeatPast = (session) => {
+    const w = repeatSession(session, profile, log, { customs: profile.customExercises || [], sessionId: newSessionId() });
+    if (!w) return;
+    setQuick(w); setQDone(new Set()); setQFeels({}); setQError(null); setRest(null);
+    setTab("quick");
+    try { window.scrollTo({ top: 0 }); } catch {}
+  };
   const shuffleQuick = () => {
     if (!quick) return;
     let seed = newSeed();
@@ -501,7 +510,7 @@ function App() {
         onChangeFocus={() => { setQuick(null); setRest(null); }}>
         <WorkoutPanel mode="quick" workout={quick} done={qDone} feels={qFeels} stale={false} {...sessionProps("quick")}
           onWarmupOn={() => patch({ warmup: true })}
-          onRegenerate={shuffleQuick}
+          onRegenerate={quick?.repeatOf ? null : shuffleQuick}
           onNewSelection={() => { setQuick(null); setRest(null); }}
           onRepeat={() => { setQDone(new Set()); setRest(null); }}
           onRoundRest={() => quick && startRest(quick.roundRest, "between rounds")} />
@@ -536,7 +545,7 @@ function App() {
     if (window.matchMedia && window.matchMedia("(min-width: 768px)").matches) setDrawer(true);
     else setTab("profile");
   };
-  const progressPanel = <ProgressPanel log={log} profile={profile} onLogWorkout={openLog} cal={cal} />;
+  const progressPanel = <ProgressPanel log={log} profile={profile} onLogWorkout={openLog} cal={cal} onRepeat={repeatPast} />;
   const logPanel = (
     <LogWorkoutPanel profile={profile} onSave={saveManual} cal={cal}
       onBack={() => setTab(logReturn || "plan")} onViewProgress={() => setTab("progress")} />

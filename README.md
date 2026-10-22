@@ -12,7 +12,7 @@ A personal-trainer web app. Pick the muscles you want to train, and it splits th
 - **Warm-up optional.** Skip it and its 2–4 minutes go to working sets; a short note says why warm-ups exist and offers a one-minute ramp-up set instead. Lifts you've been progressing keep their slot when the session is re-solved.
 - **Single sessions.** A one-off workout (core, arms, full body…) as a circuit or straight sets. It counts toward your history and progression but never toward the weekly plan.
 - **Log a workout done without the app.** Type it the way you'd text it ("3x10 all: russian twist, tridents, halos") and it fills in the rows. Library moves keep their id, so they feed that lift's progression; a move Atlas doesn't know gets its muscles picked once and is remembered. It counts toward history, volume and progress, never toward plan days, and any session can be deleted.
-- **Progress.** Charts per lift, a training calendar, a weekly-volume heatmap per muscle, and skill-ladder dates.
+- **Progress.** Charts per lift, a training calendar (tap a day to see exactly what you did, and do that workout again with today's targets), a weekly-volume heatmap per muscle, and skill-ladder dates.
 - **Saving.** Every set is written to Postgres. If the connection drops, writes queue on the device and upload later without ever creating duplicates.
 
 ## Architecture
@@ -88,6 +88,7 @@ npm test     # builds, then runs every suite; set CHROMIUM_PATH if Playwright ne
 | `logparsetest` | Free-text logging ("3x10 all: …"), library/custom/known matching, back-dating, and that logged workouts count in volume and progression but never tick a plan day |
 | `weightstest` | With 6 + 14 kg bells, 2,700+ prescriptions across goals, levels, plan days and single sessions only ever ask for 6 or 14 kg; reps → next bell → tempo progression; deloads on a fixed bell |
 | `warmuptest` | Turning the warm-up off gives its minutes to working sets without touching progress: with a week of rated history, 99.7% of the lifts you've been progressing stay on their day across 864 setups, sessions still fit their time, and a week in progress keeps its ticks even when the split moves |
+| `repeattest` | A day on the calendar lists its sessions in the order done, named for your kit; "do it again" keeps the moves and sets, repeats unrated moves exactly and progresses rated ones, keeps circuits as circuits, leaves out moves you no longer have the gear for, and logs as a single session |
 | `weektest` | 720 weekly plans: every pick placed, full coverage when there's time, frequency, recovery spacing |
 | `calendartest` | Day and week boundaries are read in the person's home zone and first weekday: a 01:30 Sunday workout in Israel lands in that Sunday's week on devices set to UTC, Auckland, Los Angeles or Jerusalem; DST weeks still start at midnight |
 | `progresstest` | Progress maths and skill pacing, against hand-built logs with known answers |
